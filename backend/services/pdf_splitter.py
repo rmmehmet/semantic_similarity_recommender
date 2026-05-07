@@ -2,7 +2,6 @@ import fitz
 import re
 import unicodedata
 
-
 def safe_filename(name):
     """Convert a string to a safe filename by removing or replacing unsafe characters.
     Parameters:
@@ -16,7 +15,6 @@ def safe_filename(name):
 
     return name.strip("-")
 
-
 def fix_title(title):
     """Fix a title by removing or replacing unsafe characters.
     Parameters:
@@ -25,7 +23,6 @@ def fix_title(title):
     str: The fixed title."""
     title = re.sub(r'[\\/*?:"<>|]', "", title)
     return title.strip()
-
 
 def split_pdf_by_font_size(file_bytes, font_threshold=22, original_filename=""):
     """Split a PDF into sections based on font size.
