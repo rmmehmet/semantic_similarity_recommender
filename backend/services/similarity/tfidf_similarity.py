@@ -1,6 +1,6 @@
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from text_preprocessing import text_preprocessing
+from services.text_preprocessing import text_preprocessing
 
 def calculate_tfidf(documents):
     """Calculates the TF-IDF similarity scores between all pairs of documents, returning the results in a structured format.

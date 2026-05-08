@@ -1,5 +1,5 @@
 import Levenshtein
-from text_preprocessing import text_preprocessing
+from services.text_preprocessing import text_preprocessing
 
 def _norm(dist, l1, l2):
     """Normalizes the Levenshtein distance to a similarity score between 0 and 1, where 1 indicates identical strings and 0 indicates completely different strings.

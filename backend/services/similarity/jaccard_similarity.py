@@ -1,4 +1,4 @@
-from text_preprocessing import text_preprocessing
+from services.text_preprocessing import text_preprocessing
 
 def _jaccard(s1, s2):
     """Calculates the Jaccard similarity between two sets of tokens.

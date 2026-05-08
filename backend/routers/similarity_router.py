@@ -1,0 +1,25 @@
+from fastapi import APIRouter, UploadFile, File, Form
+import base64
+
+from services.comparison_service import run_compare, THRESHOLDS
+from services.highlight_service  import run_compare_highlight
+
+router = APIRouter()
+
+
+@router.post("/compare")
+async def compare_documents(
+    target_file:   UploadFile       = File(...),
+    compare_files: list[UploadFile] = File(...),
+    search_type:   str              = Form("fulltext"),
+):
+    return await run_compare(target_file, compare_files, search_type)
+
+
+@router.post("/compare-highlight")
+async def compare_highlight(
+    target_file:  UploadFile = File(...),
+    compare_file: UploadFile = File(...),
+    search_type:  str        = Form("fulltext"),
+):
+    return await run_compare_highlight(target_file, compare_file)

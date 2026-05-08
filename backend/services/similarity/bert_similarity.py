@@ -1,6 +1,6 @@
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-from text_preprocessing import text_preprocessing
+from services.text_preprocessing import text_preprocessing
 import numpy as np
 
 _model = None
