@@ -168,26 +168,22 @@ def extract_full_text_from_pdf(pdf_bytes: bytes) -> str:
         doc.close()
 
 def text_preprocessing(text: str) -> str:
-    """Cleans the extracted text by removing extra whitespace and non-printable characters."""
+    """Basic text preprocessing to clean up the extracted text.
+    Parameters:
+    text (str): The raw extracted text.
+    Returns:
+    str: The preprocessed text.
+    """
+
     # normalize newline
     text = re.sub(r'\r\n', '\n', text)
-    text = re.sub(r'\n{2,}', '\n', text)
-
-    # multiple spaces are removed, but single spaces are preserved
+    # collapse excessive newlines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    # collapse spaces/tabs only
     text = re.sub(r'[ \t]+', ' ', text)
-
-    # control characters are removed, but unicode is preserved
-    text = re.sub(r'[\x00-\x1F\x7F]', '', text)
-
-    text = re.sub(r'\.{2,}', ' ', text)
-
-    # multiple spaces are removed, resulting in a single space, but single spaces are preserved
-    text = re.sub(r'\s+', ' ', text)
-
-    # structures such as 1.25 are corrected
-    text = re.sub(r'(\d+)\s+(\d+\.)', r'\2', text)
-
-    # structures like "25 1." are corrected
-    text = re.sub(r'\d+\s{2,}(\d+\.)', r'\1', text)
+    # remove control chars EXCEPT newline/tab
+    text = re.sub(r'[\x00-\x08\x0B-\x1F\x7F]', '', text)
+    # remove repeated dots
+    text = re.sub(r'\.{2,}', '.', text)
 
     return text.strip()
