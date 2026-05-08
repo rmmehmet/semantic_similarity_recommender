@@ -11,6 +11,7 @@ async def split_pdf(
     file: UploadFile = File(...),
     font_threshold: float = Form(22.0)
 ):
+    """Split a PDF into sections based on font size."""
     file_bytes = await file.read()
     result = split_pdf_by_font_size(
         file_bytes=file_bytes,
@@ -26,7 +27,7 @@ async def download_section(
     end_page: int = Form(...),
     title: str = Form("bolum")
 ):
-    """Orijinal PDF'den sayfa aralığını PDF olarak indir (attachment)."""
+    """Download the page range from the original PDF as a PDF file."""
     file_bytes = await file.read()
     try:
         pdf_bytes = _extract_pages(file_bytes, start_page, end_page)
@@ -42,14 +43,13 @@ async def download_section(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
 @router.post("/preview-section")
 async def preview_section(
     file: UploadFile = File(...),
     start_page: int = Form(...),
     end_page: int = Form(...),
 ):
-    """Sayfa aralığını PDF olarak inline döndür (önizleme için)."""
+    """Returns the page range inline for PDF preview."""
     file_bytes = await file.read()
     try:
         pdf_bytes = _extract_pages(file_bytes, start_page, end_page)
@@ -64,20 +64,33 @@ async def preview_section(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# ── Yardımcılar ────────────────────────────────────────────────────
+# ── Auxiliary Functions ────────────────────────────────────────────────────
 def _extract_pages(file_bytes: bytes, start_page: int, end_page: int) -> bytes:
+    """Extract a page range from a PDF file and return it as bytes.
+    Parameters:
+    file_bytes (bytes): The PDF file as bytes.
+    start_page (int): The starting page number.
+    end_page (int): The ending page number.
+    Returns:
+    bytes: The extracted pages as a PDF file."""
+
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     writer = fitz.open()
-    s = max(0, start_page - 1)        # 1-tabanlı → 0-tabanlı
-    e = min(len(doc), end_page) - 1   # end_page dahil
+    s = max(0, start_page - 1)        
+    e = min(len(doc), end_page) - 1   
     writer.insert_pdf(doc, from_page=s, to_page=e)
     pdf_bytes = writer.tobytes()
     writer.close()
     doc.close()
     return pdf_bytes
 
-
 def _safe_filename(name: str) -> str:
+    """Convert a string to a safe filename by removing or replacing unsafe characters.
+    Parameters:
+    name (str): The original string to be converted into a safe filename.
+    Returns:
+    str: The safe filename."""
+
     import re, unicodedata
     name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
     name = re.sub(r'[\\/*?:"<>|]', "", name)
