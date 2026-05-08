@@ -3,7 +3,7 @@ import axios from "axios";
 const API = axios.create({ baseURL: "http://localhost:8000" });
 
 // ════════════════════════════════════════════
-//  PDF BÖLME
+//  PDF Split & Download
 // ════════════════════════════════════════════
 export const splitPDF = async (file, fontThreshold = 22) => {
   const fd = new FormData();
@@ -20,7 +20,7 @@ export const downloadSectionPDF = async (file, section) => {
   fd.append("end_page", section.end_page);
   fd.append("title", section.clean_title || section.title || "bolum");
   const res  = await fetch("http://localhost:8000/pdf/download-section", { method: "POST", body: fd });
-  if (!res.ok) throw new Error("PDF indirme başarısız");
+  if (!res.ok) throw new Error("PDF download is failed");
   const blob = await res.blob();
   const url  = URL.createObjectURL(blob);
   const a    = Object.assign(document.createElement("a"), {
@@ -41,12 +41,12 @@ export const previewSectionPDF = async (file, section) => {
   fd.append("start_page", section.start_page);
   fd.append("end_page",   section.end_page);
   const res  = await fetch("http://localhost:8000/pdf/preview-section", { method: "POST", body: fd });
-  if (!res.ok) throw new Error("PDF önizleme başarısız");
+  if (!res.ok) throw new Error("PDF preview failed");
   return URL.createObjectURL(await res.blob());
 };
 
 // ════════════════════════════════════════════
-//  BENZERLİK ANALİZİ
+//  Similarity Comparison
 // ════════════════════════════════════════════
 
 /**
@@ -63,8 +63,8 @@ export const compareDocuments = async (targetFile, compareFiles, searchType = "f
 };
 
 /**
- * İki PDF'i benzer kelimeler highlight edilmiş olarak döndür.
- * Response: { success, common_words, word_count, target_pdf (base64), compare_pdf (base64) }
+ * Compare the target PDF to a single comparison PDF and highlight similar sections.
+ * İleride Milvus entegrasyonu için compare_file parametresi opsiyonel olacak.
  */
 export const compareHighlight = async (targetFile, compareFile, searchType = "fulltext", topWords = 60) => {
   const fd = new FormData();
@@ -75,7 +75,9 @@ export const compareHighlight = async (targetFile, compareFile, searchType = "fu
   const res = await API.post("/similarity/compare-highlight", fd);
   return res.data;
 };
-
+// ════════════════════════════════════════════
+//  PROJE ÖNERİ
+// ════════════════════════════════════════════
 export const suggestSearch = async ({ searchType, queryText, pdfFile, topK = 12 }) => {
   const fd = new FormData();
   fd.append("search_type", searchType);

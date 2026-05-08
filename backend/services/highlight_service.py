@@ -11,11 +11,28 @@ COLOR_SEMANTIC  = (1.0, 0.82, 0.0)
 
 
 def _split_sentences(text: str) -> list[str]:
+    """Split text into sentences using punctuation as delimiters.
+    Parameters:
+        text (str): The text to split.
+    Returns:
+        list[str]: A list of sentences.
+    """
+
     raw = re.split(r'(?<=[.!?])\s+', text.strip())
     return [s.strip() for s in raw if len(s.strip()) > 25]
 
 
 def _bert_sentence_pairs(text1: str, text2: str, threshold: float = 0.80, top_n: int = 60):
+    """Find similar sentence pairs between two texts using BERT embeddings.
+    Parameters:
+        text1 (str): The first text.
+        text2 (str): The second text.
+        threshold (float): The similarity threshold.
+        top_n (int): The maximum number of top pairs to return.
+    Returns:
+        list: A list of similar sentence pairs.
+    """
+
     from services.similarity.bert_similarity import get_model
 
     sents1 = _split_sentences(text1)
@@ -48,6 +65,15 @@ def _bert_sentence_pairs(text1: str, text2: str, threshold: float = 0.80, top_n:
 
 
 def _annotate_page(page, sentences: list[str], color: tuple) -> None:
+    """Annotate a PDF page with highlights for the given sentences.
+    Parameters:
+        page: The PDF page to annotate.
+        sentences (list[str]): The sentences to highlight.
+        color (tuple): The color to use for the highlights.
+    Returns:
+        None
+    """
+
     for sent in sentences:
         sent = sent.strip()
         if not sent or len(sent) < 15:
@@ -69,6 +95,15 @@ def _annotate_page(page, sentences: list[str], color: tuple) -> None:
 
 
 def _highlight_two_tiers(file_bytes: bytes, tier1: list[str], tier2: list[str]) -> bytes:
+    """Highlight two tiers of sentences in a PDF and return the modified PDF as bytes.
+    Parameters:
+        file_bytes (bytes): The bytes of the PDF file.
+        tier1 (list[str]): The first tier of sentences to highlight.
+        tier2 (list[str]): The second tier of sentences to highlight.
+    Returns:
+        bytes: The bytes of the modified PDF file.
+    """
+
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     for page in doc:
         _annotate_page(page, tier2, COLOR_SEMANTIC)
@@ -84,6 +119,16 @@ async def run_compare_highlight(
     search_type: str = "fulltext",
     top_words:   int = 60,
 ) -> dict:
+    """Compare two PDFs and return highlighted similarities.
+    Parameters:
+        target_file: The target PDF file.
+        compare_file: The PDF file to compare against.
+        search_type (str): The type of text to extract for comparison.
+        top_words (int): The maximum number of top word pairs to return.
+    Returns:
+        dict: A dictionary containing the comparison results and highlighted PDFs.
+    """
+    
     from services.text_preprocessing import (
         extract_full_text_from_pdf,
         extract_abstract_from_pdf,

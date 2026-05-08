@@ -4,7 +4,7 @@ from routers import pdf_router
 from routers.similarity_router import router as similarity_router
 import uvicorn
 
-app = FastAPI()
+app = FastAPI(title="Altay AI Backend API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -13,6 +13,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+@app.get("/")
+async def read_root():
+    return {"message": "Altay AI Backend API is running!"}
 
 app.include_router(pdf_router.router, prefix="/pdf", tags=["PDF"])
 app.include_router(similarity_router, prefix="/similarity", tags=["Similarity"])

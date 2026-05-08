@@ -11,6 +11,7 @@ async def compare_documents(
     compare_files: list[UploadFile] = File(...),
     search_type:   str              = Form("fulltext"),
 ):
+    """Compare the target PDF with one or more PDFs and return similarity results."""
     return await run_compare(target_file, compare_files, search_type)
 
 @router.post("/compare-highlight")
@@ -20,4 +21,5 @@ async def compare_highlight(
     search_type:  str        = Form("fulltext"),
     top_words:    int        = Form(60),
 ):
+    """Compare two PDFs and return highlighted similarities."""
     return await run_compare_highlight(target_file, compare_file, search_type, top_words)
