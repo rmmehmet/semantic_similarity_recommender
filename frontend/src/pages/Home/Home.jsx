@@ -3,9 +3,10 @@ import { useNavigate } from "react-router-dom";
 import "./Home.css";
 
 const NAV_LINKS = [
-  { label: "PDF Bölme", path: "/split", icon: "⬡" },
-  { label: "Anlamsal Benzerlik Hesaplama ", path: "/search", icon: "⬡" },
-  { label: "Proje Öneri Sistemi", path: "/suggest", icon: "⬡" },
+  { label: "PDF Bölme",       path: "/split",    icon: "⬡" },
+  { label: "Benzerlik Arama", path: "/search",   icon: "⬡" },
+  { label: "Proje Öneri",     path: "/suggest",  icon: "⬡" },
+  { label: "Veritabanı",      path: "/database", icon: "⬡" },
 ];
 
 const FEATURES = [
@@ -36,7 +37,7 @@ const FEATURES = [
       </svg>
     ),
     tag: "02",
-    title: "Anlamsal Benzerlik Oranı",
+    title: "Benzerlik Arama",
     subtitle: "5 farklı algoritmayla derin analiz",
     desc: "Cosine, Jaccard, TF-IDF, Levenshtein ve BERT ile veritabanındaki tüm projelerle karşılaştır.",
     accent: "#A78BFA",
@@ -49,10 +50,25 @@ const FEATURES = [
       </svg>
     ),
     tag: "03",
-    title: "Proje Öneri Sistemi",
+    title: "Proje Öneri",
     subtitle: "LLM destekli özgünleştirme önerileri",
     desc: "Yüksek benzerlik (%80+) tespit edildiğinde Llama 3.1 devreye girerek projeyi özgünleştirmenize yardımcı olur.",
     accent: "#34D399",
+  },
+  {
+    path: "/database",
+    icon: (
+      <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <ellipse cx="24" cy="12" rx="16" ry="6" stroke="currentColor" strokeWidth="2"/>
+        <path d="M8 12v12c0 3.314 7.163 6 16 6s16-2.686 16-6V12" stroke="currentColor" strokeWidth="2"/>
+        <path d="M8 24v12c0 3.314 7.163 6 16 6s16-2.686 16-6V24" stroke="currentColor" strokeWidth="2"/>
+      </svg>
+    ),
+    tag: "04",
+    title: "Veritabanı",
+    subtitle: "Milvus PDF yönetimi ve indeksleme",
+    desc: "PDF'leri Milvus vektör veritabanına ekle, sil ve yönet. BERT embedding ile otomatik indeksle.",
+    accent: "#F59E0B",
   },
 ];
 
@@ -147,8 +163,8 @@ export default function Home() {
       {/* ── Navbar ── */}
       <nav className={`hm-nav${scrolled ? " hm-nav--scrolled" : ""}`}>
         <div className="hm-nav__logo" onClick={() => navigate("/")}>
-          <span className="hm-nav__logo-mark">A</span>
-          <span className="hm-nav__logo-text">Altay<em>AI</em></span>
+          <span className="hm-nav__logo-mark">L</span>
+          <span className="hm-nav__logo-text">LIFT<em>UP</em></span>
         </div>
         <ul className={`hm-nav__links${menuOpen ? " open" : ""}`}>
           {NAV_LINKS.map(l => (
@@ -173,7 +189,7 @@ export default function Home() {
         <div className="hm-hero__content">
           <div className="hm-hero__badge">
             <span className="hm-hero__badge-dot" />
-            AltayAI Proje Benzerlik Analizi ve Öneri Sistemi
+            LIFT UP Bildiri Analiz Sistemi
           </div>
 
           <h1 className="hm-hero__title">
@@ -185,7 +201,7 @@ export default function Home() {
           </h1>
 
           <p className="hm-hero__sub">
-            Geçmiş projeleri tarayın, benzerlik oranını ölçün
+            Geçmiş LIFT UP projelerini tarayın, benzerlik oranını ölçün
             <br />ve yapay zeka destekli önerilerle fikrinizi özgünleştirin.
           </p>
 
@@ -199,6 +215,11 @@ export default function Home() {
             </button>
           </div>
         </div>
+
+        <div className="hm-hero__scroll-hint">
+          <span>Aşağı Kaydır</span>
+          <div className="hm-hero__scroll-line" />
+        </div>
       </section>
 
       {/* ── Stats ── */}
@@ -206,8 +227,8 @@ export default function Home() {
         <div className="hm-stats__inner">
           {[
             { n: 5, suffix: "", label: "Benzerlik Algoritması" },
-            { n: 3,  suffix: "",  label: "Proje Bölümü" },
-            { n: 80, suffix: "%", label: "Yüksek Benzerlik Eşiği" },
+            { n: 3,  suffix: "",  label: "Vektör Collection" },
+            { n: 70, suffix: "%", label: "Yüksek Benzerlik Eşiği" },
             { n: 10, suffix: "",  label: "En İyi Eşleşme" },
           ].map((s, i) => (
             <div className="hm-stat" key={i}>
@@ -256,10 +277,10 @@ export default function Home() {
         </div>
         <div className="hm-flow__steps">
           {[
-            { n: "01", title: "PDF Yükle", desc: "Başlık veya özet metnini gir ya da PDF yükle" },
-            { n: "02", title: "Vektörleştir", desc: "Embedding modeli ile milvus vektör tabanına kaydet " },
-            { n: "03", title: "Anlamsal Benzerlik Hesapla", desc: "Milvus vektör DB'deki binlerce projeyle eşleştir" },
-            { n: "04", title: "LLM ile Öneri Al", desc: "%80+ benzerlikte Llama 3.1 ile özgünleştirme önerileri al" },
+            { n: "01", title: "Yükle", desc: "Başlık ve özet metnini gir ya da PDF yükle" },
+            { n: "02", title: "Gömüle", desc: "paraphrase-multilingual-MiniLM ile vektörleştir" },
+            { n: "03", title: "Karşılaştır", desc: "Milvus vektör DB'deki binlerce projeyle eşleştir" },
+            { n: "04", title: "Öner", desc: "%70+ benzerlikte Llama 3.1 ile özgünleştirme önerileri al" },
           ].map((s, i) => (
             <div className="hm-step" key={i}>
               <div className="hm-step__num">{s.n}</div>
@@ -295,9 +316,9 @@ export default function Home() {
       <footer className="hm-footer">
         <div className="hm-footer__logo">
           <span className="hm-nav__logo-mark">L</span>
-          <span className="hm-nav__logo-text">Altay<em>AI</em></span>
+          <span className="hm-nav__logo-text">LIFT<em>UP</em></span>
         </div>
-        <p className="hm-footer__copy">AltayAI Project Similarity and Recommendation System</p>
+        <p className="hm-footer__copy">LIFT UP Bildiri Analiz Sistemi · Milvus + Llama 3.1</p>
         <div className="hm-footer__links">
           {NAV_LINKS.map(l => (
             <button key={l.path} className="hm-footer__link" onClick={() => navigate(l.path)}>

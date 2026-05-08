@@ -76,6 +76,16 @@ export const compareHighlight = async (targetFile, compareFile, searchType = "fu
   return res.data;
 };
 
+export const suggestSearch = async ({ searchType, queryText, pdfFile, topK = 12 }) => {
+  const fd = new FormData();
+  fd.append("search_type", searchType);
+  fd.append("query_text",  queryText);
+  fd.append("top_k",       topK);
+  if (pdfFile) fd.append("pdf_file", pdfFile);
+  const res = await API.post("/suggest/search", fd);
+  return res.data;
+};
+
 // ════════════════════════════════════════════
 //  YARDIMCILAR
 // ════════════════════════════════════════════

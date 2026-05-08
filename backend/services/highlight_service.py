@@ -88,7 +88,7 @@ async def run_compare_highlight(
         extract_full_text_from_pdf,
         extract_abstract_from_pdf,
         extract_title_from_pdf,
-        preprocess_text,
+        text_preprocessing,
     )
 
     target_bytes  = await target_file.read()
@@ -97,7 +97,7 @@ async def run_compare_highlight(
     eftp = extract_full_text_from_pdf
     eafp = extract_abstract_from_pdf
     etfp = extract_title_from_pdf
-    pt   = preprocess_text
+    pt   = text_preprocessing
 
     target_raw  = _pick(target_bytes,  search_type, eftp, eafp, etfp, pt)
     compare_raw = _pick(compare_bytes, search_type, eftp, eafp, etfp, pt)
