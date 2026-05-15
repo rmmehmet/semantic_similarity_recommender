@@ -32,7 +32,7 @@ function Navbar() {
         <span className="sim-nav__brand">Altay<em>AI</em></span>
       </div>
       <ul className={`sim-nav__links${open ? " open" : ""}`}>
-        {[["PDF Bölme","/split"],["Benzerlik Arama","/search"],["Proje Öneri","/suggest"]].map(([l,p]) => (
+        {[["PDF Bölme","/split"],["Benzerlik Arama","/search"],["Proje Öneri","/suggest"], ["Veritabanı","/database"]].map(([l,p]) => (
           <li key={p}><button className={`sim-nav__link${p==="/search"?" active":""}`}
             onClick={() => { navigate(p); setOpen(false); }}>{l}</button></li>
         ))}

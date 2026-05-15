@@ -76,7 +76,7 @@ export const compareHighlight = async (targetFile, compareFile, searchType = "fu
   return res.data;
 };
 // ════════════════════════════════════════════
-//  PROJE ÖNERİ
+//  Project Recommendation
 // ════════════════════════════════════════════
 export const suggestSearch = async ({ searchType, queryText, pdfFile, topK = 12 }) => {
   const fd = new FormData();
