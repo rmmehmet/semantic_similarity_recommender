@@ -1,14 +1,3 @@
-"""
-init_milvus.py
---------------
-Milvus koleksiyonlarını oluşturur.
-İdempotent: koleksiyon zaten varsa atlar.
-
-Çalıştırma:
-    python -m services.database.init_milvus
-    veya uygulama startup'ında create_all_collections() çağrısı.
-"""
-
 from __future__ import annotations
 
 import os
@@ -35,6 +24,7 @@ HNSW_INDEX = {
 
 
 def create_all_collections() -> None:
+    """Create Milvus collections if they don't exist, otherwise just load them."""
     connections.connect(
         "default",
         host=MILVUS_HOST,
@@ -43,7 +33,7 @@ def create_all_collections() -> None:
     )
 
     # ── liftup_titles ─────────────────────────────────────────────
-    # 1 PDF → 1 kayıt  |  başlık vektörü
+    # 1 PDF → 1 entry  |  title vector
     _ensure_collection(
         name="liftup_titles",
         fields=[
@@ -52,11 +42,11 @@ def create_all_collections() -> None:
             FieldSchema("text",     DataType.VARCHAR,      max_length=1024),
             FieldSchema("vector",   DataType.FLOAT_VECTOR, dim=DIM),
         ],
-        desc="PDF başlık koleksiyonu — similarity title skoru için",
+        desc="PDF title collection — for similarity title scoring",
     )
 
     # ── liftup_abstracts ──────────────────────────────────────────
-    # 1 PDF → 1 kayıt  |  özet vektörü
+    # 1 PDF → 1 entry  |  abstract vector
     _ensure_collection(
         name="liftup_abstracts",
         fields=[
@@ -65,11 +55,11 @@ def create_all_collections() -> None:
             FieldSchema("text",     DataType.VARCHAR,      max_length=4096),
             FieldSchema("vector",   DataType.FLOAT_VECTOR, dim=DIM),
         ],
-        desc="PDF özet koleksiyonu — semantik arama için",
+        desc="PDF abstract collection — for semantic search",
     )
 
     # ── liftup_fulltext ───────────────────────────────────────────
-    # 1 PDF → N chunk  |  tam metin chunk vektörleri (RAG retrieval)
+    # 1 PDF → N chunk  |  ful text chunk vector (RAG retrieval)
     _ensure_collection(
         name="liftup_fulltext",
         fields=[
@@ -79,10 +69,10 @@ def create_all_collections() -> None:
             FieldSchema("text",      DataType.VARCHAR,      max_length=2048),
             FieldSchema("vector",    DataType.FLOAT_VECTOR, dim=DIM),
         ],
-        desc="PDF tam metin chunk koleksiyonu — RAG pipeline için",
+        desc="PDF fulltext collection — for RAG retrieval (chunk-based)",
     )
 
-    print("✓ Tüm Milvus koleksiyonları hazır.")
+    print("✓ All collections are ready.")
 
 
 def _ensure_collection(
@@ -91,7 +81,7 @@ def _ensure_collection(
     desc: str,
 ) -> Collection:
     if utility.has_collection(name):
-        print(f"  – {name}: zaten mevcut, yükleniyor.")
+        print(f"  – {name}: already exists, loading.")
         col = Collection(name)
         col.load()
         return col
@@ -100,7 +90,7 @@ def _ensure_collection(
     col    = Collection(name=name, schema=schema)
     col.create_index(field_name="vector", index_params=HNSW_INDEX)
     col.load()
-    print(f"  ✓ {name}: oluşturuldu.")
+    print(f"  ✓ {name}: created.")
     return col
 
 

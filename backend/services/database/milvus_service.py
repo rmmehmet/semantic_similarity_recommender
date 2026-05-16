@@ -1,18 +1,3 @@
-"""
-milvus_service.py
------------------
-Milvus vector DB katmanı.
-Koleksiyonlar: liftup_titles | liftup_abstracts | liftup_fulltext
-
-DÜZELTMELER (v2):
-  - milvus_stats(): col.flush() kaldırıldı (gereksiz I/O + num_entities'i blokluyor)
-  - get_collection(): load() her çağrıda çağrılmıyor → load_state kontrolü eklendi
-  - _delete_by_pdf_name: pdf_name içinde tırnak işareti olursa injection riski var
-    → parametre sanitize edildi
-  - milvus_insert_*: field adlarına göre dict-based insert kullanıldı (pozisyon hatası önlenir)
-  - ensure_connected: basit lock benzeri flag, uvicorn single-thread için yeterli
-"""
-
 from __future__ import annotations
 
 import os
@@ -55,27 +40,36 @@ def ensure_connected() -> None:
 
 
 def _safe_name(pdf_name: str) -> str:
-    """PDF adındaki tırnak / özel karakterleri temizler (Milvus expr injection önlemi)."""
+    """Removes quotation marks/special characters from the PDF file (Milvus expr injection precaution)."""
     return pdf_name.replace('"', "").replace("'", "").replace("\\", "")
 
 
 def get_collection(name: str) -> Collection:
+    """Get a Milvus collection by name, ensuring it's loaded. Raises an error if the collection doesn't exist.
+    Parameters:
+    name (str): The name of the collection to retrieve.
+    Returns:
+    Collection: The Milvus collection object."""
     ensure_connected()
     col = Collection(name)
-    # Zaten yüklüyse tekrar load() çağırmak gereksiz yük oluşturur
+    # Calling load() again if it's already loaded creates unnecessary overhead
     load_state = utility.load_state(name)
     if str(load_state) != "Loaded":
         col.load()
     return col
 
-
 # ══════════════════════════════════════════════════════════════════
 # INSERT
-# Pymilvus dict-based insert kullanılıyor → field sırası hatası yok
 # ══════════════════════════════════════════════════════════════════
 
 def milvus_insert_title(pdf_name: str, title: str, vector: list[float]) -> int:
-    """liftup_titles'a 1 kayıt ekler. Döndürür: Milvus primary key."""
+    """Adds 1 entry to liftup_titles.
+    Parameters:
+    pdf_name (str): The name of the PDF file.
+    title (str): The title of the paper.
+    vector (list[float]): The embedding vector for the title.
+    Returns:
+    int: The primary key of the inserted entry."""
     col = get_collection(COL_TITLES)
     data = [
         {"pdf_name": pdf_name, "text": title, "vector": vector}
@@ -84,9 +78,14 @@ def milvus_insert_title(pdf_name: str, title: str, vector: list[float]) -> int:
     col.flush()
     return int(res.primary_keys[0])
 
-
 def milvus_insert_abstract(pdf_name: str, abstract: str, vector: list[float]) -> int:
-    """liftup_abstracts'a 1 kayıt ekler."""
+    """Adds 1 entry to liftup_abstracts.
+    Parameters:
+    pdf_name (str): The name of the PDF file.
+    abstract (str): The abstract of the paper.
+    vector (list[float]): The embedding vector for the abstract.
+    Returns:
+    int: The primary key of the inserted entry."""
     col = get_collection(COL_ABSTRACTS)
     data = [
         {"pdf_name": pdf_name, "text": abstract, "vector": vector}
@@ -95,15 +94,18 @@ def milvus_insert_abstract(pdf_name: str, abstract: str, vector: list[float]) ->
     col.flush()
     return int(res.primary_keys[0])
 
-
 def milvus_insert_fulltext_chunks(
     pdf_name: str,
     chunks: list[str],
     vectors: list[list[float]],
 ) -> list[int]:
-    """
-    liftup_fulltext'e N chunk ekler.
-    chunks[i] ↔ vectors[i]
+    """Adds N entries to liftup_fulltext for the given PDF.
+    Parameters:
+    pdf_name (str): The name of the PDF file.
+    chunks (list[str]): The list of full text chunks.
+    vectors (list[list[float]]): The list of embedding vectors corresponding to each chunk.
+    Returns:
+    list[int]: The list of primary keys of the inserted entries.
     """
     if not chunks:
         return []
@@ -121,17 +123,21 @@ def milvus_insert_fulltext_chunks(
     col.flush()
     return [int(pk) for pk in res.primary_keys]
 
-
 # ══════════════════════════════════════════════════════════════════
 # DELETE
 # ══════════════════════════════════════════════════════════════════
 
 def _delete_by_pdf_name(collection_name: str, pdf_name: str) -> None:
+    """Deletes all entries with the given pdf_name from the specified collection.
+    Parameters:
+    collection_name (str): The name of the collection from which to delete entries.
+    pdf_name (str): The name of the PDF file whose entries to delete.
+    Returns:
+    None: This function does not return anything."""
     safe = _safe_name(pdf_name)
     col  = get_collection(collection_name)
     col.delete(expr=f'pdf_name == "{safe}"')
     col.flush()
-
 
 def milvus_delete_pdf(pdf_name: str) -> None:
     """3 koleksiyondan da siler."""
@@ -139,8 +145,7 @@ def milvus_delete_pdf(pdf_name: str) -> None:
         try:
             _delete_by_pdf_name(name, pdf_name)
         except Exception:
-            pass  # koleksiyon yoksa veya boşsa sessizce geç
-
+            pass  # if collection doesn't exist or other error, ignore
 
 # ══════════════════════════════════════════════════════════════════
 # SEARCH
@@ -153,10 +158,15 @@ def milvus_search(
     output_fields: Optional[list[str]] = None,
     expr: Optional[str] = None,
 ) -> list[dict]:
-    """
-    En yakın top_k kaydı döndürür.
-    output_fields belirtilmezse ['pdf_name', 'text'] döner.
-    expr: opsiyonel scalar filtre, örn. 'pdf_name != "xyz.pdf"'
+    """Performs a similarity search on the specified collection using the given query vector and optional filter expression.
+    Parameters:
+    collection_name (str): The name of the collection to search.
+    query_vector (list[float]): The embedding vector to use as the search query.
+    top_k (int, optional): The number of top results to return. Defaults to 10.
+    output_fields (list[str], optional): The list of additional fields to include in the results. Defaults to None (only returns id and score).
+    expr (str, optional): An optional filter expression to apply to the search. Defaults to None (no filtering).
+    Returns:
+    list[dict]: A list of search results, where each result is a dictionary containing the score, id, and any requested output fields.
     """
     col = get_collection(collection_name)
     if output_fields is None:
@@ -184,13 +194,16 @@ def milvus_search(
         hits.append(record)
     return hits
 
-
 # ══════════════════════════════════════════════════════════════════
-# QUERY (exact match — mevcutluk kontrolü)
+# QUERY (exact match)
 # ══════════════════════════════════════════════════════════════════
 
 def milvus_pdf_exists(pdf_name: str) -> bool:
-    """liftup_titles'da bu pdf_name var mı?"""
+    """Checks if an entry with the given pdf_name exists in the liftup_titles collection. This is used as a proxy to check if the PDF has been processed, since each PDF should have exactly 1 title entry.
+    Parameters:
+    pdf_name (str): The name of the PDF file to check.
+    Returns:
+    bool: True if an entry with the given pdf_name exists, False otherwise."""
     try:
         col = get_collection(COL_TITLES)
         safe = _safe_name(pdf_name)
@@ -205,11 +218,14 @@ def milvus_pdf_exists(pdf_name: str) -> bool:
 
 
 # ══════════════════════════════════════════════════════════════════
-# İSTATİSTİKLER
-# flush() KALDIRILDI — num_entities anlık sayıyı döndürür
+# STATS
 # ══════════════════════════════════════════════════════════════════
 
 def milvus_stats() -> dict:
+    """Returns the number of entries in each collection. This can be used to monitor how many PDFs have been processed and stored in Milvus.
+    Returns:
+        dict: A dictionary containing the count of entries in each collection.
+    """
     ensure_connected()
     stats: dict = {}
     for name in [COL_TITLES, COL_ABSTRACTS, COL_FULLTEXT]:
@@ -220,12 +236,15 @@ def milvus_stats() -> dict:
             stats[name] = {"count": 0, "error": "collection not found"}
     return stats
 
-
 # ══════════════════════════════════════════════════════════════════
-# RESET — koleksiyonları drop + yeniden oluştur
+# RESET
 # ══════════════════════════════════════════════════════════════════
 
 def milvus_drop_all() -> None:
+    """Drops all collections. Use with caution, this will delete all data in Milvus.
+    Returns:
+        None
+    """
     ensure_connected()
     for name in [COL_TITLES, COL_ABSTRACTS, COL_FULLTEXT]:
         if utility.has_collection(name):

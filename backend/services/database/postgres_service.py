@@ -1,17 +1,3 @@
-"""
-postgres_service.py
--------------------
-PostgreSQL CRUD katmanı.  asyncpg tabanlı bağlantı havuzu.
-
-DÜZELTMELER (v2):
-  - DATABASE_URL env'den okunuyor, fallback liftup_db/postgres:123
-  - pg_insert_chunks: ON CONFLICT DO NOTHING → ON CONFLICT yerine
-    INSERT ... WHERE NOT EXISTS kullanıldı (unique constraint olmadan güvenli)
-  - pg_list_papers: abstract_len / fulltext_len int'e cast edildi
-  - pg_get_detail: chunks ayrı tip listesi şeklinde döndürülüyor
-  - pg_stats: liftup_titles / liftup_abstracts Milvus count için placeholder
-"""
-
 from __future__ import annotations
 
 import os
@@ -19,7 +5,7 @@ from typing import Optional
 
 import asyncpg
 
-# ── Bağlantı ──────────────────────────────────────────────────────
+# ── Connection ──────────────────────────────────────────────────────
 DATABASE_URL: str = os.getenv(
     "DATABASE_URL",
     "postgresql://postgres:123@localhost:5432/liftup_db",
@@ -27,20 +13,25 @@ DATABASE_URL: str = os.getenv(
 
 _pool: Optional[asyncpg.Pool] = None
 
-
 async def get_pool() -> asyncpg.Pool:
+    """Returns a singleton asyncpg connection pool. If the pool doesn't exist yet, it will be created with the specified DATABASE_URL. Subsequent calls will return the same pool instance.
+    Returns:
+        asyncpg.Pool: The singleton asyncpg connection pool.
+    """
     global _pool
     if _pool is None:
         _pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
     return _pool
 
-
 async def close_pool() -> None:
+    """ Closes the asyncpg connection pool if it exists. After calling this function, the pool will be set to None, and a new pool will be created on the next call to get_pool().
+    Returns:
+        None
+    """
     global _pool
     if _pool:
         await _pool.close()
         _pool = None
-
 
 # ══════════════════════════════════════════════════════════════════
 # PAPERS
@@ -54,7 +45,7 @@ async def pg_upsert_paper(
     book_name: str = "",
     year: int = 0,
 ) -> int:
-    """INSERT OR UPDATE → paper id döndürür."""
+    """INSERT OR UPDATE"""
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -74,8 +65,13 @@ async def pg_upsert_paper(
         )
         return int(row["id"])
 
-
 async def pg_get_paper(pdf_name: str) -> Optional[dict]:
+    """Returns the paper record with the given pdf_name, or None if not found. The returned dictionary includes all fields from the papers table, with created_at and updated_at converted to strings for JSON serialization.
+    Parameters:
+        pdf_name (str): The name of the PDF file to retrieve.
+    Returns:
+        Optional[dict]: The paper record as a dictionary, or None if not found.
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -83,9 +79,13 @@ async def pg_get_paper(pdf_name: str) -> Optional[dict]:
         )
         return dict(row) if row else None
 
-
 async def pg_list_papers(limit: int = 500) -> list[dict]:
-    """Listeleme için hafif sorgu — fulltext döndürülmez."""
+    """Lists papers with optional limit.
+    Parameters:
+        limit (int): The maximum number of papers to return. Defaults to 500.
+    Returns:
+        list[dict]: A list of paper records as dictionaries.
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -108,15 +108,19 @@ async def pg_list_papers(limit: int = 500) -> list[dict]:
         result = []
         for r in rows:
             d = dict(r)
-            # asyncpg datetime → str (JSON serileştirme için)
+            # asyncpg datetime → str 
             if d.get("created_at"):
                 d["created_at"] = str(d["created_at"])
             result.append(d)
         return result
 
-
 async def pg_delete_paper(pdf_name: str) -> bool:
-    """Cascade ile chunks / keywords / suggestions silinir."""
+    """Deletes the paper with the given pdf_name. Returns True if a paper was deleted, False if no paper with that name was found.
+    Parameters:
+        pdf_name (str): The name of the PDF file to delete.
+    Returns:
+        bool: True if a paper was deleted, False if no paper with that name was found.
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
         result = await conn.execute(
@@ -125,7 +129,6 @@ async def pg_delete_paper(pdf_name: str) -> bool:
         # result: "DELETE N"
         return result.split()[-1] != "0"
 
-
 async def pg_paper_exists(pdf_name: str) -> bool:
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -133,7 +136,6 @@ async def pg_paper_exists(pdf_name: str) -> bool:
             "SELECT 1 FROM papers WHERE pdf_name = $1", pdf_name
         )
         return row is not None
-
 
 # ══════════════════════════════════════════════════════════════════
 # CHUNKS
@@ -153,8 +155,6 @@ async def pg_insert_chunks(paper_id: int, chunks: list[dict]) -> None:
         return
     pool = await get_pool()
     async with pool.acquire() as conn:
-        # executemany asyncpg'de copy_records_to_table kadar hızlı değil
-        # ama okunabilirlik için yeterli
         await conn.executemany(
             """
             INSERT INTO chunks (paper_id, chunk_text, chunk_idx, chunk_type)
@@ -166,17 +166,28 @@ async def pg_insert_chunks(paper_id: int, chunks: list[dict]) -> None:
             ],
         )
 
-
 async def pg_delete_chunks(paper_id: int) -> None:
+    """Deletes all chunks associated with the given paper_id. This should be called before re-inserting chunks for a paper to ensure that old chunks are removed.
+    Parameters:
+        paper_id (int): The ID of the paper for which to delete chunks.
+    Returns:
+        None
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM chunks WHERE paper_id = $1", paper_id)
-
 
 async def pg_get_chunks(
     paper_id: int,
     chunk_type: str = "fulltext",
 ) -> list[dict]:
+    """Returns a list of chunks for the given paper_id and chunk_type, ordered by chunk_idx. Each chunk is returned as a dictionary with keys 'chunk_idx', 'chunk_text', and 'chunk_type'.
+    Parameters:
+        paper_id (int): The ID of the paper for which to get chunks.
+        chunk_type (str): The type of chunks to retrieve. Defaults to "fulltext".
+    Returns:
+        list[dict]: A list of chunk records as dictionaries.
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -190,12 +201,17 @@ async def pg_get_chunks(
         )
         return [dict(r) for r in rows]
 
-
 # ══════════════════════════════════════════════════════════════════
-# DETAY  (modal için — başlık / özet / tam metin + chunk listesi)
+# DETAIL (paper + chunks)
 # ══════════════════════════════════════════════════════════════════
 
 async def pg_get_detail(pdf_name: str) -> Optional[dict]:
+    """Returns the paper record with the given pdf_name along with its associated chunks. The returned dictionary includes all fields from the papers table, with created_at and updated_at converted to strings for JSON serialization, and an additional 'chunks' key which is a list of chunk records as dictionaries.
+    Parameters:
+        pdf_name (str): The name of the PDF file for which to get detail.
+    Returns:
+        Optional[dict]: A dictionary containing the paper record and its associated chunks, or None if no paper with that name is found.
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -222,12 +238,15 @@ async def pg_get_detail(pdf_name: str) -> Optional[dict]:
         paper["chunks"] = [dict(c) for c in chunks]
         return paper
 
-
 # ══════════════════════════════════════════════════════════════════
-# İSTATİSTİKLER
+# STATS
 # ══════════════════════════════════════════════════════════════════
 
 async def pg_stats() -> dict:
+    """Returns statistics about the papers and chunks in the database, including the total number of unique PDFs and the count of chunks by type. This can be used for monitoring and debugging purposes.
+    Returns:
+        dict: A dictionary containing the statistics.
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
         paper_count = await conn.fetchval("SELECT COUNT(*) FROM papers")
@@ -243,13 +262,15 @@ async def pg_stats() -> dict:
         "chunks_by_type":   {r["chunk_type"]: int(r["cnt"]) for r in chunk_rows},
     }
 
-
 # ══════════════════════════════════════════════════════════════════
-# TRUNCATE (reset için)
+# TRUNCATE (for reset)
 # ══════════════════════════════════════════════════════════════════
 
 async def pg_truncate_all() -> None:
-    """Tüm tabloları CASCADE ile temizler. RESTART IDENTITY ile ID sıfırlanır."""
+    """Truncates all data from papers and chunks tables. This is a destructive operation and should be used with caution, as it will permanently delete all records in these tables.
+    Returns:
+        None
+    """
     pool = await get_pool()
     async with pool.acquire() as conn:
         # Bağımlı tablolar önce, ana tablo en son
