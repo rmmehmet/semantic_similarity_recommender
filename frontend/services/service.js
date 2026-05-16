@@ -93,3 +93,78 @@ export const suggestSearch = async ({ searchType, queryText, pdfFile, topK = 12 
 // ════════════════════════════════════════════
 const delay = ms => new Promise(r => setTimeout(r, ms));
 const sanitize = n => n.replace(/[\\/*?:"<>|]/g, "").replace(/\s+/g, "-").slice(0, 80) || "bolum";
+
+// ════════════════════════════════════════════----------------------------
+// ══════════════════════════════════════════════════════════════════
+// DATABASE — PDF ekleme
+// ══════════════════════════════════════════════════════════════════
+ 
+/**
+ * PDF yükler ve Milvus+PostgreSQL'e indeksler.
+ * @param {File} file
+ * @param {{ bookName: string, year: number, forceUpdate: boolean }} opts
+ */
+export async function dbAddPdf(file, { bookName = "", year = 0, forceUpdate = false } = {}) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("book_name", bookName);
+  form.append("year", String(year));
+  form.append("force_update", String(forceUpdate));
+  const res = await api.post("/api/db/add", form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return res.data;
+}
+ 
+// ══════════════════════════════════════════════════════════════════
+// DATABASE — PDF silme
+// ══════════════════════════════════════════════════════════════════
+ 
+export async function dbRemovePdf(pdfName) {
+  const res = await api.delete(`/api/db/remove/${encodeURIComponent(pdfName)}`);
+  return res.data;
+}
+ 
+// ══════════════════════════════════════════════════════════════════
+// DATABASE — PDF listesi
+// ══════════════════════════════════════════════════════════════════
+ 
+export async function dbListPdfs(limit = 500) {
+  const res = await api.get("/api/db/list", { params: { limit } });
+  return res.data;
+}
+ 
+// ══════════════════════════════════════════════════════════════════
+// DATABASE — PDF detay (başlık / özet / tam metin / chunk'lar)
+// ══════════════════════════════════════════════════════════════════
+ 
+export async function dbGetDetail(pdfName) {
+  const res = await api.get(`/api/db/detail/${encodeURIComponent(pdfName)}`);
+  return res.data;
+}
+ 
+// ══════════════════════════════════════════════════════════════════
+// DATABASE — İstatistikler
+// ══════════════════════════════════════════════════════════════════
+ 
+export async function dbStats() {
+  const res = await api.get("/api/db/stats");
+  return res.data;
+}
+ 
+// ══════════════════════════════════════════════════════════════════
+// DATABASE — Sıfırla
+// ══════════════════════════════════════════════════════════════════
+ 
+export async function dbReset() {
+  const res = await api.post("/api/db/reset");
+  return res.data;
+}
+ 
+// ══════════════════════════════════════════════════════════════════
+// DATABASE — PDF önizleme URL'i (iframe için)
+// ══════════════════════════════════════════════════════════════════
+ 
+export function dbPreviewUrl(pdfName) {
+  return `${API}/api/db/preview/${encodeURIComponent(pdfName)}`;
+}
