@@ -1,15 +1,18 @@
 import axios from "axios";
 
-const API = axios.create({ baseURL: "http://localhost:8000" });
+const API_BASE = "http://localhost:8000";
+
+const api = axios.create({ baseURL: API_BASE });
 
 // ════════════════════════════════════════════
 //  PDF Split & Download
 // ════════════════════════════════════════════
+
 export const splitPDF = async (file, fontThreshold = 22) => {
   const fd = new FormData();
   fd.append("file", file);
   fd.append("font_threshold", fontThreshold);
-  const res = await API.post("/pdf/split", fd);
+  const res = await api.post("/pdf/split", fd);
   return res.data;
 };
 
@@ -19,7 +22,7 @@ export const downloadSectionPDF = async (file, section) => {
   fd.append("start_page", section.start_page);
   fd.append("end_page", section.end_page);
   fd.append("title", section.clean_title || section.title || "bolum");
-  const res  = await fetch("http://localhost:8000/pdf/download-section", { method: "POST", body: fd });
+  const res = await fetch(`${API_BASE}/pdf/download-section`, { method: "POST", body: fd });
   if (!res.ok) throw new Error("PDF download is failed");
   const blob = await res.blob();
   const url  = URL.createObjectURL(blob);
@@ -40,7 +43,7 @@ export const previewSectionPDF = async (file, section) => {
   fd.append("file", file);
   fd.append("start_page", section.start_page);
   fd.append("end_page",   section.end_page);
-  const res  = await fetch("http://localhost:8000/pdf/preview-section", { method: "POST", body: fd });
+  const res = await fetch(`${API_BASE}/pdf/preview-section`, { method: "POST", body: fd });
   if (!res.ok) throw new Error("PDF preview failed");
   return URL.createObjectURL(await res.blob());
 };
@@ -49,122 +52,85 @@ export const previewSectionPDF = async (file, section) => {
 //  Similarity Comparison
 // ════════════════════════════════════════════
 
-/**
- * Hedef PDF'yi karşılaştırma PDF'leriyle karşılaştır.
- * İleride Milvus entegrasyonu için compare_files parametresi opsiyonel olacak.
- */
 export const compareDocuments = async (targetFile, compareFiles, searchType = "fulltext") => {
   const fd = new FormData();
   fd.append("target_file", targetFile);
   compareFiles.forEach(f => fd.append("compare_files", f));
   fd.append("search_type", searchType);
-  const res = await API.post("/similarity/compare", fd);
+  const res = await api.post("/similarity/compare", fd);
   return res.data;
 };
 
-/**
- * Compare the target PDF to a single comparison PDF and highlight similar sections.
- * İleride Milvus entegrasyonu için compare_file parametresi opsiyonel olacak.
- */
 export const compareHighlight = async (targetFile, compareFile, searchType = "fulltext", topWords = 60) => {
   const fd = new FormData();
   fd.append("target_file",  targetFile);
   fd.append("compare_file", compareFile);
   fd.append("search_type",  searchType);
   fd.append("top_words",    topWords);
-  const res = await API.post("/similarity/compare-highlight", fd);
+  const res = await api.post("/similarity/compare-highlight", fd);
   return res.data;
 };
+
 // ════════════════════════════════════════════
 //  Project Recommendation
 // ════════════════════════════════════════════
+
 export const suggestSearch = async ({ searchType, queryText, pdfFile, topK = 12 }) => {
   const fd = new FormData();
   fd.append("search_type", searchType);
   fd.append("query_text",  queryText);
   fd.append("top_k",       topK);
   if (pdfFile) fd.append("pdf_file", pdfFile);
-  const res = await API.post("/suggest/search", fd);
+  const res = await api.post("/suggest/search", fd);
   return res.data;
 };
 
 // ════════════════════════════════════════════
-//  YARDIMCILAR
+//  Database — PDF Yönetimi
 // ════════════════════════════════════════════
-const delay = ms => new Promise(r => setTimeout(r, ms));
-const sanitize = n => n.replace(/[\\/*?:"<>|]/g, "").replace(/\s+/g, "-").slice(0, 80) || "bolum";
 
-// ════════════════════════════════════════════----------------------------
-// ══════════════════════════════════════════════════════════════════
-// DATABASE — PDF ekleme
-// ══════════════════════════════════════════════════════════════════
- 
-/**
- * PDF yükler ve Milvus+PostgreSQL'e indeksler.
- * @param {File} file
- * @param {{ bookName: string, year: number, forceUpdate: boolean }} opts
- */
 export async function dbAddPdf(file, { bookName = "", year = 0, forceUpdate = false } = {}) {
   const form = new FormData();
   form.append("file", file);
   form.append("book_name", bookName);
   form.append("year", String(year));
   form.append("force_update", String(forceUpdate));
-  const res = await api.post("/api/db/add", form, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+  const res = await api.post("/db/add", form);
   return res.data;
 }
- 
-// ══════════════════════════════════════════════════════════════════
-// DATABASE — PDF silme
-// ══════════════════════════════════════════════════════════════════
- 
+
 export async function dbRemovePdf(pdfName) {
-  const res = await api.delete(`/api/db/remove/${encodeURIComponent(pdfName)}`);
+  const res = await api.delete(`/db/remove/${encodeURIComponent(pdfName)}`);
   return res.data;
 }
- 
-// ══════════════════════════════════════════════════════════════════
-// DATABASE — PDF listesi
-// ══════════════════════════════════════════════════════════════════
- 
+
 export async function dbListPdfs(limit = 500) {
-  const res = await api.get("/api/db/list", { params: { limit } });
+  const res = await api.get("/db/list", { params: { limit } });
   return res.data;
 }
- 
-// ══════════════════════════════════════════════════════════════════
-// DATABASE — PDF detay (başlık / özet / tam metin / chunk'lar)
-// ══════════════════════════════════════════════════════════════════
- 
+
 export async function dbGetDetail(pdfName) {
-  const res = await api.get(`/api/db/detail/${encodeURIComponent(pdfName)}`);
+  const res = await api.get(`/db/detail/${encodeURIComponent(pdfName)}`);
   return res.data;
 }
- 
-// ══════════════════════════════════════════════════════════════════
-// DATABASE — İstatistikler
-// ══════════════════════════════════════════════════════════════════
- 
+
 export async function dbStats() {
-  const res = await api.get("/api/db/stats");
+  const res = await api.get("/db/stats");
   return res.data;
 }
- 
-// ══════════════════════════════════════════════════════════════════
-// DATABASE — Sıfırla
-// ══════════════════════════════════════════════════════════════════
- 
+
 export async function dbReset() {
-  const res = await api.post("/api/db/reset");
+  const res = await api.post("/db/reset");
   return res.data;
 }
- 
-// ══════════════════════════════════════════════════════════════════
-// DATABASE — PDF önizleme URL'i (iframe için)
-// ══════════════════════════════════════════════════════════════════
- 
+
 export function dbPreviewUrl(pdfName) {
-  return `${API}/api/db/preview/${encodeURIComponent(pdfName)}`;
+  return `${API_BASE}/db/preview/${encodeURIComponent(pdfName)}`;
 }
+
+// ════════════════════════════════════════════
+//  Yardımcılar
+// ════════════════════════════════════════════
+
+const delay    = ms => new Promise(r => setTimeout(r, ms));
+const sanitize = n  => n.replace(/[\\/*?:"<>|]/g, "").replace(/\s+/g, "-").slice(0, 80) || "bolum";

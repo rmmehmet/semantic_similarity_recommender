@@ -274,7 +274,7 @@ function PdfRow({ doc, index, onDelete, onDetail, onPreview }) {
 // PDF ÖNİZLEME MODALI
 // ══════════════════════════════════════════════════════════════════
 function PdfPreviewModal({ pdfName, onClose }) {
-  const previewUrl = `${API}/api/db/preview/${encodeURIComponent(pdfName)}`;
+  const previewUrl = `${API}/db/preview/${encodeURIComponent(pdfName)}`;
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
