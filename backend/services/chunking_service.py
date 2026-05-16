@@ -1,22 +1,8 @@
-"""
-chunking_service.py
--------------------
-Chunk işlemlerinin tek sorumlu olduğu servis.
-database_router.py bu modülü import eder.
-
-Kural (README):
-  - Title   : chunk yapılmaz, tek parça
-  - Abstract: 300-500 karakter, overlap yok
-  - Fulltext: 700-1000 karakter, overlap var (sentence-aware)
-"""
-
 from __future__ import annotations
-
 import re
 
-
 # ══════════════════════════════════════════════════════════════════
-# SENTENCE-AWARE CHUNKING  (fulltext için)
+# SENTENCE-AWARE CHUNKING  (for fulltext)
 # ══════════════════════════════════════════════════════════════════
 
 def chunk_fulltext(
@@ -24,23 +10,13 @@ def chunk_fulltext(
     size: int    = 850,
     overlap: int = 100,
 ) -> list[str]:
-    """
-    Sentence-aware chunking — fulltext için.
-
-    Adımlar:
-      1. Metni cümlelere böl (.  !  ? sonrası boşluk).
-      2. Cümleleri 'size' sınırına kadar birleştir.
-      3. Yeni chunk başlarken önceki chunk'ın son 'overlap' karakterini
-         önek olarak ekle (context sürekliliği için).
-      4. Tek cümle 'size'ı aşıyorsa hard-cut yapılır.
-
-    Args:
-        text   : Ham tam metin.
-        size   : Hedef max karakter sayısı (varsayılan 850).
-        overlap: Chunk'lar arası örtüşme karakteri (varsayılan 100).
-
+    """It performs sentence-based chunking for fulltext. It tries to preserve sentence boundaries.
+    Parameters:
+    - text: The fulltext to be chunked.
+    - size: The maximum character length of each chunk (default: 850).
+    - overlap: The number of characters to overlap between consecutive chunks (default: 100).
     Returns:
-        Chunk string listesi. Boş metin → [].
+    A list of text chunks, each ideally containing complete sentences and respecting the specified size and overlap.
     """
     text = text.strip()
     if not text:
@@ -51,26 +27,26 @@ def chunk_fulltext(
     current            = ""
 
     for sent in sentences:
-        # Mevcut chunk'a sığıyor mu?
+        # New candidate chunk if we add this sentence to the current chunk
         candidate = (current + " " + sent).strip() if current else sent
 
         if len(candidate) <= size:
             current = candidate
         else:
-            # Mevcut chunk'ı kaydet
+            # Save the current chunk if it's not empty
             if current:
                 chunks.append(current)
 
-            # Overlap: önceki chunk'ın son 'overlap' karakteri
+            # Start a new chunk with the current sentence
             tail = current[-overlap:] if current and overlap > 0 else ""
 
-            # tail + yeni cümle hâlâ sığıyor mu?
+            # Try to include the current sentence in the new chunk, but if it's too long, start fresh with just the sentence
             new_start = (tail + " " + sent).strip() if tail else sent
 
             if len(new_start) <= size:
                 current = new_start
             else:
-                # Çok uzun cümle → hard-cut
+                # If the single sentence is too long, we have to split it directly (not ideal, but necessary)
                 current = sent[:size]
 
     if current:
@@ -78,18 +54,17 @@ def chunk_fulltext(
 
     return chunks
 
-
 # ══════════════════════════════════════════════════════════════════
-# ABSTRACT CHUNKING  (tek parça, 300-500 karakter sınırı)
+# ABSTRACT CHUNKING  (for abstract)
 # ══════════════════════════════════════════════════════════════════
 
 def chunk_abstract(abstract: str, max_len: int = 500) -> list[str]:
-    """
-    Abstract chunk yapılmaz — tek parça olarak tutulur.
-    max_len'i aşarsa cümle sınırından kesilir, geri kalanı atılır.
-
+    """It performs a simple chunking for abstracts. It tries to preserve sentence boundaries but does not guarantee it.
+    Parameters:
+    - abstract: The abstract text to be chunked.
+    - max_len: The maximum character length of the abstract chunk (default: 500).
     Returns:
-        Tek elemanlı liste ya da boş liste.
+    A list containing a single chunk of the abstract, ideally preserving sentence boundaries and respecting the specified maximum length. If the abstract is shorter than max_len, it returns the whole abstract as a single chunk.
     """
     abstract = abstract.strip()
     if not abstract:
@@ -98,7 +73,7 @@ def chunk_abstract(abstract: str, max_len: int = 500) -> list[str]:
     if len(abstract) <= max_len:
         return [abstract]
 
-    # max_len içinde son cümle sonu bul
+    # Try to cut at the last sentence boundary before max_len
     cut = abstract[:max_len]
     last_end = max(
         cut.rfind(". "),
@@ -110,9 +85,8 @@ def chunk_abstract(abstract: str, max_len: int = 500) -> list[str]:
 
     return [cut]
 
-
 # ══════════════════════════════════════════════════════════════════
-# YARDIMCI: tüm chunk kayıtlarını üret
+# CHUNK RECORDS BUILDER
 # ══════════════════════════════════════════════════════════════════
 
 def build_chunk_records(
@@ -121,19 +95,20 @@ def build_chunk_records(
     fulltext: str,
 ) -> tuple[list[dict], list[str], list[str]]:
     """
-    PostgreSQL chunks tablosu için kayıt listesi üretir.
-
+    It builds chunk records for title, abstract, and fulltext. The title is kept as a single chunk, while the abstract and fulltext are chunked using their respective functions.
+    Parameters:
+    - title: The title of the document (not chunked).
+    - abstract: The abstract of the document (chunked using chunk_abstract).
+    - fulltext: The fulltext of the document (chunked using chunk_fulltext).
     Returns:
-        chunk_records : [{"chunk_text", "chunk_idx", "chunk_type"}, ...]
-        ft_chunks     : fulltext chunk string listesi (vektörleme için)
-        abs_chunks    : abstract chunk string listesi (vektörleme için)
-
-    Kullanım:
-        chunk_records, ft_chunks, abs_chunks = build_chunk_records(title, abstract, fulltext)
+    A tuple containing:
+    - records: A list of dictionaries representing the chunk records.
+    - ft_chunks: A list of strings representing the fulltext chunks.
+    - abs_chunks: A list of strings representing the abstract chunks.
     """
     records: list[dict] = []
 
-    # ── Title (chunk yapılmaz) ─────────────────────────────────
+    # ── Title ─────────────────────────────────
     if title:
         records.append(
             {"chunk_text": title, "chunk_idx": 0, "chunk_type": "title"}

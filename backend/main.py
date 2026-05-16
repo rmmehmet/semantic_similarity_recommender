@@ -1,17 +1,3 @@
-"""
-main.py
--------
-FastAPI uygulama giriş noktası.
-
-Startup:
-  - PostgreSQL bağlantı havuzu oluşturulur
-  - Milvus koleksiyonları kontrol edilir / oluşturulur
-  - Embedding modeli ön yüklenir
-
-Shutdown:
-  - PostgreSQL havuzu kapatılır
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -28,35 +14,33 @@ from routers.database_router   import router as db_router
 from services.database.postgres_service import get_pool, close_pool
 from services.database.init_milvus      import create_all_collections
 
-
 # ══════════════════════════════════════════════════════════════════
-# UYGULAMA YAŞAM DÖNGÜSÜ  (startup / shutdown)
+# APPLICATION LIFESPAN (startup / shutdown)
 # ══════════════════════════════════════════════════════════════════
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # ── Startup ──────────────────────────────────────────────────
-    print("▶ PostgreSQL bağlantı havuzu başlatılıyor…")
+    print("▶ Creating PostgreSQL connection pool…")
     await get_pool()
 
-    print("▶ Milvus koleksiyonları kontrol ediliyor…")
+    print("▶ Creating Milvus collections…")
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, create_all_collections)
 
-    print("▶ Embedding modeli ön yükleniyor…")
+    print("▶ Pre-loading embedding model…")
     from routers.database_router import _get_model
     await loop.run_in_executor(None, _get_model)
 
-    print("✓ Tüm servisler hazır.")
+    print("✓ All systems go! API is ready to accept requests.")
     yield
 
     # ── Shutdown ─────────────────────────────────────────────────
-    print("◀ PostgreSQL bağlantı havuzu kapatılıyor…")
+    print("◀ PostgreSQL connection pool is closing…")
     await close_pool()
 
-
 # ══════════════════════════════════════════════════════════════════
-# UYGULAMA
+# APPLICATION SETUP
 # ══════════════════════════════════════════════════════════════════
 
 app = FastAPI(
@@ -68,14 +52,14 @@ app = FastAPI(
 # ── CORS ─────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],        # mevcut ayarın korundu
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ══════════════════════════════════════════════════════════════════
-# ROUTER'LAR  —  prefix'ler mevcut main.py ile aynı tutuldu
+# ROUTERS  —  PDF, SIMILARITY, DATABASE
 # ══════════════════════════════════════════════════════════════════
 
 app.include_router(pdf_router.router,   prefix="/pdf",        tags=["PDF"])
@@ -84,7 +68,7 @@ app.include_router(db_router,           prefix="/db",          tags=["Database"]
 
 
 # ══════════════════════════════════════════════════════════════════
-# GENEL ENDPOINT'LER
+# GENERAL ENDPOINT'LER
 # ══════════════════════════════════════════════════════════════════
 
 @app.get("/")
@@ -95,7 +79,6 @@ async def read_root():
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
-
 
 # ══════════════════════════════════════════════════════════════════
 # GELİŞTİRME SUNUCUSU
