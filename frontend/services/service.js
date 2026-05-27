@@ -70,20 +70,142 @@ export const compareHighlight = async (targetFile, compareFile, searchType = "fu
   const res = await api.post("/similarity/compare-highlight", fd);
   return res.data;
 };
+// ─────────────────────────────────────────────────────────────────
+// frontend/services/service.js
+// ─────────────────────────────────────────────────────────────────
+// Mevcut servis fonksiyonlarına (splitPdf, searchSimilarity, vb.)
+// suggestSearch eklendi.
+//
+// Endpoint: POST /suggest/search   (multipart/form-data)
+//
+// Parametreler:
+//   searchType : "title" | "abstract" | "fulltext"
+//   queryText  : kullanıcının girdiği metin
+//   pdfFile    : File nesnesi (fulltext modunda, opsiyonel)
+//   topK       : kaç sonuç isteniyor (varsayılan 12)
+//
+// Döner:
+//   {
+//     success       : boolean,
+//     total         : number,
+//     results       : Array<ResultItem>,
+//     llm_suggestion: LLMSuggestion,
+//     duration_ms   : number,
+//     error?        : string
+//   }
+//
+// ResultItem:
+//   { score, pdf_name, raw_title, book_name, year, matched_text }
+//
+// LLMSuggestion (text modu):
+//   { mode:"text", success, field, analysis, risk_level,
+//     topic_suggestions, revised_title }
+//
+// LLMSuggestion (rag modu):
+//   { mode:"rag", success, field, risk_level,
+//     similarity_analysis, original_aspects,
+//     improvement_suggestions, topic_suggestions, revised_title }
+// ─────────────────────────────────────────────────────────────────
 
-// ════════════════════════════════════════════
-//  Project Recommendation
-// ════════════════════════════════════════════
 
-export const suggestSearch = async ({ searchType, queryText, pdfFile, topK = 12 }) => {
-  const fd = new FormData();
-  fd.append("search_type", searchType);
-  fd.append("query_text",  queryText);
-  fd.append("top_k",       topK);
-  if (pdfFile) fd.append("pdf_file", pdfFile);
-  const res = await api.post("/suggest/search", fd);
-  return res.data;
-};
+// ── Yardımcı: timeout eklenmiş fetch ────────────────────────────
+async function fetchWithTimeout(url, options = {}, timeoutMs = 180_000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// suggestSearch
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * Proje Öneri Sistemi ana servis fonksiyonu.
+ *
+ * @param {Object} params
+ * @param {"title"|"abstract"|"fulltext"} params.searchType
+ * @param {string}  params.queryText   - Kullanıcının girdiği metin
+ * @param {File|null} params.pdfFile   - fulltext modunda yüklenen PDF (opsiyonel)
+ * @param {number}  [params.topK=12]   - Kaç sonuç isteniyor
+ * @returns {Promise<Object>}          - Backend'den dönen JSON
+ */
+export async function suggestSearch({
+  searchType,
+  queryText  = "",
+  pdfFile    = null,
+  topK       = 12,
+}) {
+  // multipart/form-data — fetch otomatik boundary ayarlar, Content-Type elle set edilmez
+  const body = new FormData();
+  body.append("search_type", searchType);
+  body.append("query_text",  queryText.trim());
+  body.append("top_k",       String(topK));
+
+  // PDF sadece fulltext modunda eklenir
+  if (searchType === "fulltext" && pdfFile instanceof File) {
+    body.append("file", pdfFile, pdfFile.name);
+  }
+
+  let res;
+  try {
+    res = await fetchWithTimeout(
+      `${API_BASE}/suggest/search`,
+      { method: "POST", body },
+      300_000,   // Llama 3.1 Q4 RAG modu için 5 dakika timeout
+    );
+  } catch (err) {
+    if (err.name === "AbortError") {
+      throw new Error("İstek zaman aşımına uğradı (5 dk). Ollama çalışıyor mu? GPU modu açık mı?");
+    }
+    throw new Error(`Sunucuya bağlanılamadı: ${err.message}`);
+  }
+
+  if (!res.ok) {
+    let detail = `Sunucu hatası: ${res.status}`;
+    try {
+      const errBody = await res.json();
+      detail = errBody.detail || detail;
+    } catch (_) {}
+    throw new Error(detail);
+  }
+
+  const data = await res.json();
+
+  // Backend başarısız döndüyse normalize et
+  if (data.success === false) {
+    throw new Error(data.error || "Arama başarısız");
+  }
+
+  return data;
+}
+
+// ════════════════════════════════════════════════════════════════
+// suggestHealth  — opsiyonel, servis kontrolü için
+// ════════════════════════════════════════════════════════════════
+
+/**
+ * Suggest servisinin model + Ollama sağlığını kontrol eder.
+ * @returns {Promise<{status, model_ok, ollama_ok}>}
+ */
+export async function suggestHealth() {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/suggest/health`, {}, 5_000);
+    return await res.json();
+  } catch (_) {
+    return { status: "unreachable", model_ok: false, ollama_ok: false };
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// NOT: Mevcut diğer fonksiyonlar (splitPdf, searchSimilarity, vb.)
+// bu dosyanın geri kalanında aynı şekilde kalmalıdır.
+// Sadece bu iki export yeni eklenenlerdir.
+// ════════════════════════════════════════════════════════════════════════════════════════════
 
 // ════════════════════════════════════════════
 //  Database — PDF Yönetimi

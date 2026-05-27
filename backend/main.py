@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from routers import pdf_router
 from routers.similarity_router import router as similarity_router
 from routers.database_router   import router as db_router
+from routers.suggest_router import router as suggest_router
 
 from services.database.postgres_service import get_pool, close_pool
 from services.database.init_milvus      import create_all_collections
@@ -65,7 +66,7 @@ app.add_middleware(
 app.include_router(pdf_router.router,   prefix="/pdf",        tags=["PDF"])
 app.include_router(similarity_router,   prefix="/similarity",  tags=["Similarity"])
 app.include_router(db_router,           prefix="/db",          tags=["Database"])
-
+app.include_router(suggest_router,      prefix="/suggest",     tags=["Suggest"])
 
 # ══════════════════════════════════════════════════════════════════
 # GENERAL ENDPOINT'LER
