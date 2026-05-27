@@ -452,8 +452,8 @@ BM498/
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-org/bm498-altayai.git
-cd bm498-altayai
+git clone https://github.com/rmmehmet/semantic_similarity_recommender.git
+cd semantic_similarity_recommender
 ```
 
 ### 2. Backend Setup
