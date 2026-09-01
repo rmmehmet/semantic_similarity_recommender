@@ -1,70 +1,86 @@
 from __future__ import annotations
+
 import re
 
+# ── Türkçe kısaltmalar — bunlarda cümle sonu SAYILMAZ ────────────
+_TR_ABBREVS = re.compile(
+    r'\b(Dr|Prof|Doç|Yrd|Arş|Gör|Öğr|vb|vs|bkz|örn|ör|Şek|Tab|'
+    r'No|no|Md|md|akt|s|sy|ss|vol|Vol|Fig|fig|ed|Ed)\.',
+    re.IGNORECASE,
+)
+
+
+def _split_sentences(text: str) -> list[str]:
+    """
+    Türkçe uyumlu cümle bölücü.
+    Kısaltma noktaları (Dr., vb., bkz.) cümle sonu sayılmaz.
+    """
+    # Kısaltma noktalarını geçici olarak maskele
+    masked = _TR_ABBREVS.sub(lambda m: m.group().replace('.', '<DOT>'), text)
+
+    # Cümle sonu: . ! ? sonrası boşluk + büyük harf veya rakam
+    parts = re.split(r'(?<=[.!?])\s+', masked)
+
+    # Maskeyi geri al, boş parçaları temizle
+    return [p.replace('<DOT>', '.').strip() for p in parts if p.strip()]
+
+
 # ══════════════════════════════════════════════════════════════════
-# SENTENCE-AWARE CHUNKING  (for fulltext)
+# FULLTEXT CHUNKING  —  sentence-aware + cümle bazlı overlap
 # ══════════════════════════════════════════════════════════════════
 
 def chunk_fulltext(
     text: str,
-    size: int    = 850,
-    overlap: int = 100,
+    size: int         = 850,
+    overlap_sentences: int = 1,   # karakter değil, cümle sayısı
 ) -> list[str]:
-    """It performs sentence-based chunking for fulltext. It tries to preserve sentence boundaries.
-    Parameters:
-    - text: The fulltext to be chunked.
-    - size: The maximum character length of each chunk (default: 850).
-    - overlap: The number of characters to overlap between consecutive chunks (default: 100).
-    Returns:
-    A list of text chunks, each ideally containing complete sentences and respecting the specified size and overlap.
+    """
+    Sentence-aware chunking with sentence-level overlap.
+
+    Değişiklikler (önceki versiyona göre):
+    - Karakter bazlı overlap yerine cümle bazlı overlap
+      → Yarım cümle taşıma sorunu ortadan kalktı
+    - Türkçe kısaltmalar artık cümle sonu sayılmıyor
     """
     text = text.strip()
     if not text:
         return []
 
-    sentences = re.split(r"(?<=[.!?])\s+", text)
-    chunks: list[str] = []
-    current            = ""
+    sentences = _split_sentences(text)
+    chunks:   list[str]      = []
+    current:  list[str]      = []   # cümle listesi (string değil)
+    cur_len:  int            = 0
 
     for sent in sentences:
-        # New candidate chunk if we add this sentence to the current chunk
-        candidate = (current + " " + sent).strip() if current else sent
+        sent_len = len(sent)
 
-        if len(candidate) <= size:
-            current = candidate
-        else:
-            # Save the current chunk if it's not empty
-            if current:
-                chunks.append(current)
+        if cur_len + sent_len + 1 > size and cur_len > 0:
+            # Mevcut chunk'ı kaydet
+            chunks.append(" ".join(current))
 
-            # Start a new chunk with the current sentence
-            tail = current[-overlap:] if current and overlap > 0 else ""
+            # Cümle bazlı overlap: son N cümleyi tut
+            current = current[-overlap_sentences:] if overlap_sentences else []
+            cur_len = sum(len(s) + 1 for s in current)
 
-            # Try to include the current sentence in the new chunk, but if it's too long, start fresh with just the sentence
-            new_start = (tail + " " + sent).strip() if tail else sent
-
-            if len(new_start) <= size:
-                current = new_start
-            else:
-                # If the single sentence is too long, we have to split it directly (not ideal, but necessary)
-                current = sent[:size]
+        # Tek cümle size'ı aşıyorsa direkt ekle (bölme yapma)
+        current.append(sent)
+        cur_len += sent_len + 1
 
     if current:
-        chunks.append(current)
+        chunks.append(" ".join(current))
 
     return chunks
 
+
 # ══════════════════════════════════════════════════════════════════
-# ABSTRACT CHUNKING  (for abstract)
+# ABSTRACT CHUNKING
 # ══════════════════════════════════════════════════════════════════
 
 def chunk_abstract(abstract: str, max_len: int = 500) -> list[str]:
-    """It performs a simple chunking for abstracts. It tries to preserve sentence boundaries but does not guarantee it.
-    Parameters:
-    - abstract: The abstract text to be chunked.
-    - max_len: The maximum character length of the abstract chunk (default: 500).
-    Returns:
-    A list containing a single chunk of the abstract, ideally preserving sentence boundaries and respecting the specified maximum length. If the abstract is shorter than max_len, it returns the whole abstract as a single chunk.
+    """
+    Abstract için tek parça temsil.
+    max_len aşılırsa son uygun cümle sınırında keser.
+    Overlap uygulanmaz (tek chunk).
     """
     abstract = abstract.strip()
     if not abstract:
@@ -73,7 +89,7 @@ def chunk_abstract(abstract: str, max_len: int = 500) -> list[str]:
     if len(abstract) <= max_len:
         return [abstract]
 
-    # Try to cut at the last sentence boundary before max_len
+    # Son cümle sınırını bul
     cut = abstract[:max_len]
     last_end = max(
         cut.rfind(". "),
@@ -81,51 +97,41 @@ def chunk_abstract(abstract: str, max_len: int = 500) -> list[str]:
         cut.rfind("? "),
     )
     if last_end > 100:
-        cut = abstract[: last_end + 1].strip()
+        cut = abstract[:last_end + 1].strip()
 
     return [cut]
+
 
 # ══════════════════════════════════════════════════════════════════
 # CHUNK RECORDS BUILDER
 # ══════════════════════════════════════════════════════════════════
 
 def build_chunk_records(
-    title: str,
+    title:    str,
     abstract: str,
     fulltext: str,
 ) -> tuple[list[dict], list[str], list[str]]:
     """
-    It builds chunk records for title, abstract, and fulltext. The title is kept as a single chunk, while the abstract and fulltext are chunked using their respective functions.
-    Parameters:
-    - title: The title of the document (not chunked).
-    - abstract: The abstract of the document (chunked using chunk_abstract).
-    - fulltext: The fulltext of the document (chunked using chunk_fulltext).
-    Returns:
-    A tuple containing:
-    - records: A list of dictionaries representing the chunk records.
-    - ft_chunks: A list of strings representing the fulltext chunks.
-    - abs_chunks: A list of strings representing the abstract chunks.
+    title    → chunk yapılmaz, direkt kayıt
+    abstract → chunk_abstract()
+    fulltext → chunk_fulltext()
+
+    Döner: (records, ft_chunks, abs_chunks)
     """
     records: list[dict] = []
 
-    # ── Title ─────────────────────────────────
+    # Başlık — tek kayıt, chunk yok
     if title:
-        records.append(
-            {"chunk_text": title, "chunk_idx": 0, "chunk_type": "title"}
-        )
+        records.append({"chunk_text": title, "chunk_idx": 0, "chunk_type": "title"})
 
-    # ── Abstract ──────────────────────────────────────────────
+    # Özet
     abs_chunks = chunk_abstract(abstract)
     for i, ch in enumerate(abs_chunks):
-        records.append(
-            {"chunk_text": ch, "chunk_idx": i, "chunk_type": "abstract"}
-        )
+        records.append({"chunk_text": ch, "chunk_idx": i, "chunk_type": "abstract"})
 
-    # ── Fulltext ──────────────────────────────────────────────
+    # Tam metin
     ft_chunks = chunk_fulltext(fulltext)
     for i, ch in enumerate(ft_chunks):
-        records.append(
-            {"chunk_text": ch, "chunk_idx": i, "chunk_type": "fulltext"}
-        )
+        records.append({"chunk_text": ch, "chunk_idx": i, "chunk_type": "fulltext"})
 
     return records, ft_chunks, abs_chunks

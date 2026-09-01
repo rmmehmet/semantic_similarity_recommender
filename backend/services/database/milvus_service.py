@@ -249,3 +249,39 @@ def milvus_drop_all() -> None:
     for name in [COL_TITLES, COL_ABSTRACTS, COL_FULLTEXT]:
         if utility.has_collection(name):
             Collection(name).drop()
+
+# ══════════════════════════════════════════════════════════════════
+# RECONCILE YARDIMCISI
+# ══════════════════════════════════════════════════════════════════
+
+def milvus_get_all_pdf_names() -> set[str]:
+    """
+    3 koleksiyondaki tüm benzersiz pdf_name'leri döner.
+    Reconcile karşılaştırması için kullanılır.
+    Büyük koleksiyonlarda sayfalı sorgu gerekebilir;
+    şimdilik limit=16384 yeterli.
+    """
+    ensure_connected()
+    all_names: set[str] = set()
+
+    for col_name in [COL_TITLES, COL_ABSTRACTS, COL_FULLTEXT]:
+        if not utility.has_collection(col_name):
+            continue
+        try:
+            col = get_collection(col_name)
+            res = col.query(
+                expr="pdf_name != \"\"",
+                output_fields=["pdf_name"],
+                limit=16384,
+            )
+            for r in res:
+                name = r.get("pdf_name", "").strip()
+                if name:
+                    all_names.add(name)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "[Milvus] %s sorgulanamadı: %s", col_name, exc
+            )
+
+    return all_names
