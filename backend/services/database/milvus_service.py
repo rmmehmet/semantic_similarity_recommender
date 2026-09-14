@@ -243,6 +243,8 @@ def milvus_search(
 
 def milvus_stats() -> dict:
     """Returns the number of entries in each collection. This can be used to monitor how many PDFs have been processed and stored in Milvus.
+    NOT: Bu, TÜM kullanıcıların toplam kaydını döner — kullanıcıya özel bir
+    ekranda göstermek için kullanılmamalı (bkz. milvus_stats_for_user).
     Returns:
         dict: A dictionary containing the count of entries in each collection.
     """
@@ -321,3 +323,42 @@ def milvus_get_all_pdf_names() -> set[tuple[int, str]]:
             logger.warning("[Milvus] %s sorgulanamadı: %s", col_name, exc)
 
     return all_pairs
+
+
+def _count_by_user(collection_name: str, user_id: int) -> int:
+    """
+    Bir koleksiyonda SADECE bu kullanıcıya ait kayıt sayısını döner.
+    col.num_entities (milvus_stats) tüm kullanıcıların toplamıdır ve ayrıca
+    silme sonrası bir süre bayat (stale) kalabilir — bu yüzden burada
+    query() ile gerçek zamanlı, kullanıcıya filtrelenmiş bir sayım yapılır.
+    """
+    if not utility.has_collection(collection_name):
+        return 0
+    try:
+        col = get_collection(collection_name)
+        total = 0
+        offset = 0
+        while True:
+            res = col.query(
+                expr=f"user_id == {int(user_id)}",
+                output_fields=["user_id"],
+                limit=_QUERY_PAGE_SIZE,
+                offset=offset,
+            )
+            total += len(res)
+            if len(res) < _QUERY_PAGE_SIZE:
+                break
+            offset += _QUERY_PAGE_SIZE
+        return total
+    except Exception as exc:
+        logger.warning("[Milvus] %s kullanıcı bazlı sayım hatası (user=%s): %s", collection_name, user_id, exc)
+        return 0
+
+
+def milvus_stats_for_user(user_id: int) -> dict:
+    """Bu kullanıcıya ait kayıt sayılarını her koleksiyon için döner."""
+    ensure_connected()
+    return {
+        name: {"count": _count_by_user(name, user_id)}
+        for name in [COL_TITLES, COL_ABSTRACTS, COL_FULLTEXT]
+    }

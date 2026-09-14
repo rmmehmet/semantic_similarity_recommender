@@ -19,7 +19,7 @@
   --green:     #34D399;
   --text:      #E8EDF2;
   --text-muted:#6B7E92;
-  --text-dim:  #3D5166;
+  --text-dim:  #5A7690;
   --glow-cyan: 0 0 40px rgba(0,212,255,0.18);
 
   background: var(--bg);
@@ -31,7 +31,7 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-button { cursor: pointer; font-family: inherit; border: none; background: none; }
+button { cursor: pointer; font-family: inherit; border: none; background: none; color: inherit; }
 ul { list-style: none; }
 
 /* ── Navbar ───────────────────────────────── */

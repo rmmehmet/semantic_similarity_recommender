@@ -44,7 +44,7 @@ from services.database.milvus_service import (
     milvus_insert_abstract,
     milvus_insert_fulltext_chunks,
     milvus_insert_title,
-    milvus_stats,
+    milvus_stats_for_user,
 )
 from services.database.init_milvus import create_all_collections
 from sentence_transformers import SentenceTransformer
@@ -340,13 +340,16 @@ async def preview_pdf(pdf_name: str, current_user: dict = Depends(get_current_us
 
 @router.get("/stats")
 async def get_stats(current_user: dict = Depends(get_current_user)):
+    user_id = _uid(current_user)
     try:
-        mv = await _run_blocking(milvus_stats)
+        # Kullanıcıya özel sayım — milvus_stats() TÜM kullanıcıların toplamını
+        # döner, bu ekranda yanlış (şişirilmiş) sayı gösterirdi.
+        mv = await _run_blocking(milvus_stats_for_user, user_id)
     except Exception as exc:
         logger.error("[Stats] Milvus bağlantı hatası: %s", exc)
         raise HTTPException(status_code=503, detail="Milvus bağlantı hatası")
 
-    pg = await pg_stats(_uid(current_user))
+    pg = await pg_stats(user_id)
 
     return {
         "stats": {
