@@ -167,20 +167,50 @@ function PdfDropZone({ files, onFiles }) {
 // ══════════════════════════════════════════════════════════════════
 // UPLOAD SATIRI
 // ══════════════════════════════════════════════════════════════════
+// Backend'in dönebileceği result.status değerlerini satır ikonu/mesajına çevirir.
+function uploadResultDisplay(result) {
+  switch (result?.status) {
+    case "ok":
+    case "partial":
+      return {
+        icon: "✓",
+        cls: "ok",
+        text: `✓ ${result.chunks ?? 0} chunk · ${result.title?.slice(0, 60) || ""}`,
+      };
+    case "skipped":
+      return { icon: "•", cls: "skip", text: "Zaten yüklü — atlandı (aynı isim, aynı içerik)" };
+    case "duplicate_content":
+      return {
+        icon: "•",
+        cls: "skip",
+        text: `Bu içerik zaten '${result.matched_pdf_name}' adıyla yüklü — atlandı`,
+      };
+    case "name_conflict":
+      return {
+        icon: "!",
+        cls: "warn",
+        text: "Bu isimde FARKLI içerikli bir belge zaten var — üzerine yazmak için 'Zorla güncelle' seçeneğini işaretleyip tekrar yükleyin",
+      };
+    default:
+      return { icon: "✓", cls: "ok", text: "Tamamlandı" };
+  }
+}
+
 function UploadRow({ file, status, result, error }) {
+  const display = status === "done" ? uploadResultDisplay(result) : null;
   return (
-    <div className={`db-upload-row db-upload-row--${status}`}>
+    <div className={`db-upload-row db-upload-row--${status}${display ? ` db-upload-row--${display.cls}` : ""}`}>
       <div className="db-upload-row__icon">
-        {status === "done" && <span className="db-icon-ok">✓</span>}
+        {status === "done" && <span className={`db-icon-${display.cls === "ok" ? "ok" : display.cls === "warn" ? "err" : "wait"}`}>{display.icon}</span>}
         {status === "error" && <span className="db-icon-err">✕</span>}
         {status === "uploading" && <span className="db-spin-sm" />}
         {status === "pending" && <span className="db-icon-wait">○</span>}
       </div>
       <div className="db-upload-row__info">
         <span className="db-upload-row__name">{file.name}</span>
-        {status === "done" && result && (
-          <span className="db-upload-row__detail">
-            ✓ {result.chunks} chunk · {result.title?.slice(0, 60)}
+        {status === "done" && (
+          <span className={`db-upload-row__detail${display.cls === "warn" ? " db-upload-row__detail--err" : ""}`}>
+            {display.text}
           </span>
         )}
         {status === "error" && (

@@ -367,6 +367,8 @@
 .db-upload-row--done    { border-color: #34D39930; }
 .db-upload-row--error   { border-color: #F8717130; }
 .db-upload-row--uploading { border-color: var(--db-amber); }
+.db-upload-row--skip    { border-color: var(--db-border); opacity: .75; }
+.db-upload-row--warn    { border-color: #F8717150; }
 .db-upload-row__icon { width: 20px; text-align: center; }
 .db-icon-ok  { color: var(--db-green); font-size: 14px; }
 .db-icon-err { color: var(--db-red); font-size: 14px; }

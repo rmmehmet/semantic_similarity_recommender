@@ -54,6 +54,7 @@ async def pg_upsert_paper(
     fulltext: str,
     book_name: str = "",
     year: int = 0,
+    content_hash: Optional[str] = None,
 ) -> int:
     """
     INSERT OR UPDATE — milvus_synced FALSE olarak başlar.
@@ -64,21 +65,35 @@ async def pg_upsert_paper(
         row = await conn.fetchrow(
             """
             INSERT INTO papers
-                (pdf_name, raw_title, abstract, fulltext, book_name, year, milvus_synced)
-            VALUES ($1, $2, $3, $4, $5, $6, FALSE)
+                (pdf_name, raw_title, abstract, fulltext, book_name, year, content_hash, milvus_synced)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
             ON CONFLICT (pdf_name) DO UPDATE
                 SET raw_title     = EXCLUDED.raw_title,
                     abstract      = EXCLUDED.abstract,
                     fulltext      = EXCLUDED.fulltext,
                     book_name     = EXCLUDED.book_name,
                     year          = EXCLUDED.year,
+                    content_hash  = EXCLUDED.content_hash,
                     milvus_synced = FALSE,
                     updated_at    = NOW()
             RETURNING id
             """,
-            pdf_name, raw_title, abstract, fulltext, book_name, year,
+            pdf_name, raw_title, abstract, fulltext, book_name, year, content_hash,
         )
         return int(row["id"])
+
+
+async def pg_get_paper_by_hash(content_hash: str) -> Optional[dict]:
+    """
+    İçerik hash'i ile eşleşen kaydı döner (dosya adından bağımsız).
+    Aynı belgenin farklı bir isimle yeniden yüklenmesini tespit etmek için kullanılır.
+    """
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM papers WHERE content_hash = $1", content_hash
+        )
+        return dict(row) if row else None
 
 
 async def pg_mark_synced(pdf_name: str) -> None:

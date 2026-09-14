@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import threading
 from functools import partial
@@ -23,6 +24,7 @@ from services.database.postgres_service import (
     pg_delete_chunks,
     pg_delete_paper,
     pg_get_detail,
+    pg_get_paper_by_hash,
     pg_get_unsynced,
     pg_get_all_pdf_names,
     pg_insert_chunks,
@@ -97,12 +99,48 @@ async def add_pdf(
     pdf_bytes = await read_and_validate_pdf(file)
     pdf_name  = file.filename or "unknown.pdf"
 
+    # İçerik hash'i — dosya adından bağımsız gerçek tekilleştirme anahtarı.
+    # "Aynı isim farklı içerik" ve "farklı isim aynı içerik" senaryolarını
+    # ayırt edebilmek için pdf_name yerine (veya onunla birlikte) kullanılır.
+    content_hash = hashlib.sha256(pdf_bytes).hexdigest()
+
+    existed  = await pg_paper_exists(pdf_name)
+    hash_dup = await pg_get_paper_by_hash(content_hash)
+
+    if hash_dup and hash_dup["pdf_name"] != pdf_name:
+        # Aynı içerik, farklı bir isim altında zaten yüklenmiş.
+        # force_update bile bunu atlamamalı — amaç BU ismi güncellemek,
+        # başka bir isim altında duplicate oluşturmak değil.
+        return {
+            "status":           "duplicate_content",
+            "pdf_name":         pdf_name,
+            "matched_pdf_name": hash_dup["pdf_name"],
+            "reason": (
+                f"Bu belge içerik olarak zaten '{hash_dup['pdf_name']}' "
+                f"adıyla yüklenmiş."
+            ),
+        }
+
+    if existed and not hash_dup and not force_update:
+        # Aynı isim var ama içerik hash'i eşleşmiyor — bu, isim çakışan
+        # FARKLI bir belge. Sessizce atlamak veri kaybına/karışıklığa yol
+        # açar; kullanıcı force_update ile bilinçli olarak üzerine yazmalı.
+        return {
+            "status": "name_conflict",
+            "pdf_name": pdf_name,
+            "reason": (
+                "Bu isimde farklı içerikli bir belge zaten kayıtlı. "
+                "Üzerine yazmak için 'force_update' seçeneğini kullanın "
+                "ya da dosyayı farklı bir adla yükleyin."
+            ),
+        }
+
+    if not force_update and existed and hash_dup:
+        # Aynı isim + aynı içerik → gerçek bir tam eşleşme, işe yaramaz tekrar işleme.
+        return {"status": "skipped", "pdf_name": pdf_name, "reason": "already_exists"}
+
     disk_path = PDF_STORAGE_DIR / Path(pdf_name).name
     disk_path.write_bytes(pdf_bytes)
-
-    existed = await pg_paper_exists(pdf_name)
-    if not force_update and existed:
-        return {"status": "skipped", "pdf_name": pdf_name, "reason": "already_exists"}
 
     title    = extract_title_from_pdf(pdf_bytes)    or ""
     abstract = extract_abstract_from_pdf(pdf_bytes) or ""
@@ -112,6 +150,7 @@ async def add_pdf(
     paper_id = await pg_upsert_paper(
         pdf_name=pdf_name, raw_title=title, abstract=abstract,
         fulltext=fulltext, book_name=book_name, year=year,
+        content_hash=content_hash,
     )
 
     chunk_records, ft_chunks, abs_chunks = build_chunk_records(title, abstract, fulltext)
