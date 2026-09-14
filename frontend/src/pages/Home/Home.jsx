@@ -4,10 +4,10 @@ import UserMenu from "../../UserMenu";
 import "./Home.css";
 
 const NAV_LINKS = [
-  { label: "PDF Bölme",       path: "/split",    icon: "⬡" },
-  { label: "Benzerlik Arama", path: "/search",   icon: "⬡" },
-  { label: "Proje Öneri",     path: "/suggest",  icon: "⬡" },
-  { label: "Veritabanı",      path: "/database", icon: "⬡" },
+  { label: "PDF Bölme",  path: "/split",    icon: "⬡" },
+  { label: "PDF Sohbet", path: "/chat",     icon: "⬡" },
+  { label: "Proje Öneri", path: "/suggest",  icon: "⬡" },
+  { label: "Veritabanı",  path: "/database", icon: "⬡" },
 ];
 
 const FEATURES = [
@@ -28,19 +28,18 @@ const FEATURES = [
     accent: "#00D4FF",
   },
   {
-    path: "/search",
+    path: "/chat",
     icon: (
       <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <circle cx="20" cy="20" r="12" stroke="currentColor" strokeWidth="2"/>
-        <line x1="29" y1="29" x2="40" y2="40" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
-        <line x1="14" y1="20" x2="26" y2="20" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-        <line x1="20" y1="14" x2="20" y2="26" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+        <path d="M8 10h32v22H18l-8 8V10z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/>
+        <line x1="14" y1="18" x2="34" y2="18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+        <line x1="14" y1="25" x2="26" y2="25" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
       </svg>
     ),
     tag: "02",
-    title: "Benzerlik Arama",
-    subtitle: "5 farklı algoritmayla derin analiz",
-    desc: "Cosine, Jaccard, TF-IDF, Levenshtein ve BERT ile veritabanındaki tüm projelerle karşılaştır.",
+    title: "PDF Sohbet",
+    subtitle: "Belgelerinle doğal dilde konuş",
+    desc: "İstediğin PDF'leri seç ve sadece onlar hakkında soru sor, ya da hiçbir şey seçmeden tüm kütüphanende arama yap.",
     accent: "#A78BFA",
   },
   {
@@ -205,13 +204,13 @@ export default function Home() {
           </h1>
 
           <p className="hm-hero__sub">
-            Geçmiş LIFT UP projelerini tarayın, benzerlik oranını ölçün
+            Geçmiş LIFT UP projelerini tarayın, belgelerinizle sohbet edin
             <br />ve yapay zeka destekli önerilerle fikrinizi özgünleştirin.
           </p>
 
           <div className="hm-hero__actions">
-            <button className="hm-btn hm-btn--primary" onClick={() => navigate("/search")}>
-              <span>Aramaya Başla</span>
+            <button className="hm-btn hm-btn--primary" onClick={() => navigate("/chat")}>
+              <span>Sohbete Başla</span>
               <svg viewBox="0 0 20 20" fill="none"><path d="M4 10h12M10 4l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </button>
             <button className="hm-btn hm-btn--ghost" onClick={() => navigate("/split")}>
@@ -303,10 +302,10 @@ export default function Home() {
         <div className="hm-cta__glow" />
         <div className="hm-cta__inner">
           <h2 className="hm-cta__title">Projenizi Şimdi Analiz Edin</h2>
-          <p className="hm-cta__sub">Özgün bir proje fikri geliştirmenin ilk adımı benzerliği ölçmekten geçer.</p>
+          <p className="hm-cta__sub">Özgün bir proje fikri geliştirmenin ilk adımı belgelerinizle konuşmaktan geçer.</p>
           <div className="hm-cta__btns">
-            <button className="hm-btn hm-btn--primary hm-btn--lg" onClick={() => navigate("/search")}>
-              <span>Benzerlik Arama</span>
+            <button className="hm-btn hm-btn--primary hm-btn--lg" onClick={() => navigate("/chat")}>
+              <span>PDF Sohbet</span>
               <svg viewBox="0 0 20 20" fill="none"><path d="M4 10h12M10 4l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </button>
             <button className="hm-btn hm-btn--ghost hm-btn--lg" onClick={() => navigate("/suggest")}>

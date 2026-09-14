@@ -31,7 +31,6 @@ idna==3.13
 iniconfig==2.3.0
 Jinja2==3.1.6
 joblib==1.5.3
-Levenshtein==0.27.3
 Mako==1.4.1
 markdown-it-py==4.1.0
 MarkupSafe==3.0.3
@@ -61,11 +60,9 @@ pytest==9.1.1
 pytest-asyncio==1.4.0
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
-python-Levenshtein==0.27.3
 python-multipart==0.0.9
 pytz==2026.2
 PyYAML==6.0.3
-RapidFuzz==3.14.5
 regex==2026.4.4
 requests==2.34.2
 rich==15.0.0

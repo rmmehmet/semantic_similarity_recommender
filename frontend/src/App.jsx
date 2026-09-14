@@ -1,7 +1,7 @@
 import { Routes, Route } from "react-router-dom";
 import Home        from "./pages/Home/Home";
 import PdfSplitter from "./pages/PdfSplitter/PdfSplitter";
-import Similarity  from "./pages/Similarity/Similarity";
+import Chat        from "./pages/Chat/Chat";
 import Suggest     from "./pages/Suggest/Suggest";
 import Database from "./pages/Database/Database";
 import Login    from "./pages/Auth/Login";
@@ -16,7 +16,7 @@ export default function App() {
 
       <Route path="/"         element={<ProtectedRoute><Home /></ProtectedRoute>}        />
       <Route path="/split"    element={<ProtectedRoute><PdfSplitter /></ProtectedRoute>} />
-      <Route path="/search"   element={<ProtectedRoute><Similarity /></ProtectedRoute>}  />
+      <Route path="/chat"     element={<ProtectedRoute><Chat /></ProtectedRoute>}        />
       <Route path="/suggest"  element={<ProtectedRoute><Suggest /></ProtectedRoute>}     />
       <Route path="/database" element={<ProtectedRoute><Database /></ProtectedRoute>}    />
     </Routes>

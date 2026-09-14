@@ -16,7 +16,7 @@ function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const NAV_LINKS = [
     { label: "PDF Bölme", path: "/split" },
-    { label: "Benzerlik Arama", path: "/search" },
+    { label: "PDF Sohbet", path: "/chat" },
     { label: "Proje Öneri", path: "/suggest" },
     { label: "Veritabanı",      path: "/database", icon: "⬡" },
   ];

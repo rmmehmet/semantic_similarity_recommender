@@ -55,7 +55,7 @@ function Navbar() {
         <span className="sug-nav__brand">Altay<em>AI</em></span>
       </button>
       <ul className={`sug-nav__links${open ? " open" : ""}`}>
-        {[["PDF Bölme","/split"],["Benzerlik Arama","/search"],["Proje Öneri","/suggest"],["Veritabanı","/database"]].map(([l,p]) => (
+        {[["PDF Bölme","/split"],["PDF Sohbet","/chat"],["Proje Öneri","/suggest"],["Veritabanı","/database"]].map(([l,p]) => (
           <li key={p}>
             <button className={`sug-nav__link${p==="/suggest"?" active":""}`}
               onClick={() => { navigate(p); setOpen(false); }}>{l}</button>

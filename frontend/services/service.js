@@ -63,25 +63,21 @@ export const previewSectionPDF = async (file, section) => {
 };
 
 // ════════════════════════════════════════════
-//  Similarity Comparison
+//  PDF Sohbet
 // ════════════════════════════════════════════
 
-export const compareDocuments = async (targetFile, compareFiles, searchType = "fulltext") => {
-  const fd = new FormData();
-  fd.append("target_file", targetFile);
-  compareFiles.forEach(f => fd.append("compare_files", f));
-  fd.append("search_type", searchType);
-  const res = await api.post("/similarity/compare", fd);
-  return res.data;
-};
-
-export const compareHighlight = async (targetFile, compareFile, searchType = "fulltext", topWords = 60) => {
-  const fd = new FormData();
-  fd.append("target_file",  targetFile);
-  fd.append("compare_file", compareFile);
-  fd.append("search_type",  searchType);
-  fd.append("top_words",    topWords);
-  const res = await api.post("/similarity/compare-highlight", fd);
+/**
+ * @param {string} message
+ * @param {string[]} pdfNames - seçili PDF adları (boşsa kullanıcının TÜM belgelerinde arama yapılır)
+ * @param {{role: "user"|"assistant", content: string}[]} history - önceki tur(lar), son ~10 tanesi yeterli
+ * @returns {Promise<{success: boolean, reply: string, sources: {pdf_name, raw_title, score}[]}>}
+ */
+export const sendChatMessage = async (message, pdfNames = [], history = []) => {
+  const res = await api.post(
+    "/chat/message",
+    { message, pdf_names: pdfNames, history },
+    { timeout: 180_000 }, // LLM yanıtı uzun sürebilir
+  );
   return res.data;
 };
 // ─────────────────────────────────────────────────────────────────

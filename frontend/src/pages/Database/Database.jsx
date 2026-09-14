@@ -22,7 +22,7 @@ function Navbar() {
   const [open, setOpen] = useState(false);
   const links = [
     ["PDF Bölme", "/split"],
-    ["Benzerlik Arama", "/search"],
+    ["PDF Sohbet", "/chat"],
     ["Proje Öneri", "/suggest"],
     ["Veritabanı", "/database"],
   ];

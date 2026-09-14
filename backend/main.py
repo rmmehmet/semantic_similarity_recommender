@@ -27,8 +27,8 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from routers.auth_router       import router as auth_router
+from routers.chat_router       import router as chat_router
 from routers.database_router  import router as database_router
-from routers.similarity_router import router as similarity_router
 from routers.pdf_router        import router as pdf_router
 from routers.suggest_router    import router as suggest_router
 from services.auth import get_current_user
@@ -68,7 +68,7 @@ logger = logging.getLogger(__name__)
 # ── App ──────────────────────────────────────────────────────────
 app = FastAPI(
     title="AltayAI",
-    description="RAG Tabanlı Akademik Benzerlik ve Proje Öneri Sistemi",
+    description="RAG Tabanlı Akademik PDF Sohbet ve Proje Öneri Sistemi",
     version="1.0.0",
 )
 
@@ -82,16 +82,16 @@ app.add_middleware(
 
 # ── Router kaydı ─────────────────────────────────────────────────
 # NOT: prefix'ler frontend/services/service.js'deki çağrı yollarıyla
-# (/pdf/..., /similarity/...) birebir eşleşmelidir.
+# (/pdf/..., /chat/...) birebir eşleşmelidir.
 #
 # auth_router hariç TÜM router'lar geçerli bir oturum (giriş yapmış kullanıcı)
 # gerektirir — database_router içindeki add/remove/reset/reconcile gibi
 # yıkıcı uçlar ayrıca kendi route'unda require_admin ile admin rolü de ister.
 app.include_router(auth_router, prefix="/auth")
-app.include_router(database_router,   prefix="/db",         dependencies=[Depends(get_current_user)])
-app.include_router(similarity_router, prefix="/similarity", dependencies=[Depends(get_current_user)])
-app.include_router(pdf_router,        prefix="/pdf",        dependencies=[Depends(get_current_user)])
-app.include_router(suggest_router,    prefix="/suggest",    dependencies=[Depends(get_current_user)])
+app.include_router(database_router,   prefix="/db",      dependencies=[Depends(get_current_user)])
+app.include_router(chat_router,       prefix="/chat",    dependencies=[Depends(get_current_user)])
+app.include_router(pdf_router,        prefix="/pdf",     dependencies=[Depends(get_current_user)])
+app.include_router(suggest_router,    prefix="/suggest", dependencies=[Depends(get_current_user)])
 
 
 @app.get("/health")
