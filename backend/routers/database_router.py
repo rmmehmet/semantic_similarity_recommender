@@ -12,7 +12,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
-from services.auth import require_admin_key
+from services.auth import require_admin
 from services.upload_validation import read_and_validate_pdf
 from services.text_preprocessing import (
     extract_title_from_pdf,
@@ -89,7 +89,7 @@ async def _run_blocking(fn, *args, **kwargs):
 # PDF YÜKLE
 # ══════════════════════════════════════════════════════════════════
 
-@router.post("/add", dependencies=[Depends(require_admin_key)])
+@router.post("/add", dependencies=[Depends(require_admin)])
 async def add_pdf(
     file: UploadFile   = File(...),
     book_name: str     = Form(""),
@@ -142,20 +142,28 @@ async def add_pdf(
     disk_path = PDF_STORAGE_DIR / Path(pdf_name).name
     disk_path.write_bytes(pdf_bytes)
 
-    title    = extract_title_from_pdf(pdf_bytes)    or ""
-    abstract = extract_abstract_from_pdf(pdf_bytes) or ""
-    fulltext = extract_full_text_from_pdf(pdf_bytes) or ""
+    # Diskten sonraki adımlardan biri beklenmedik şekilde patlarsa (extraction,
+    # Postgres yazımı), diskte DB kaydı olmayan "yetim" bir dosya kalmasın —
+    # bu bloktaki her hatada diske yazılan dosyayı geri temizliyoruz.
+    try:
+        title    = extract_title_from_pdf(pdf_bytes)    or ""
+        abstract = extract_abstract_from_pdf(pdf_bytes) or ""
+        fulltext = extract_full_text_from_pdf(pdf_bytes) or ""
 
-    # milvus_synced=FALSE olarak başlar
-    paper_id = await pg_upsert_paper(
-        pdf_name=pdf_name, raw_title=title, abstract=abstract,
-        fulltext=fulltext, book_name=book_name, year=year,
-        content_hash=content_hash,
-    )
+        # milvus_synced=FALSE olarak başlar
+        paper_id = await pg_upsert_paper(
+            pdf_name=pdf_name, raw_title=title, abstract=abstract,
+            fulltext=fulltext, book_name=book_name, year=year,
+            content_hash=content_hash,
+        )
 
-    chunk_records, ft_chunks, abs_chunks = build_chunk_records(title, abstract, fulltext)
-    await pg_delete_chunks(paper_id)
-    await pg_insert_chunks(paper_id, chunk_records)
+        chunk_records, ft_chunks, abs_chunks = build_chunk_records(title, abstract, fulltext)
+        await pg_delete_chunks(paper_id)
+        await pg_insert_chunks(paper_id, chunk_records)
+    except Exception as exc:
+        logger.error("[Add] İşleme hatası — %s: %s", pdf_name, exc)
+        disk_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail="PDF işlenirken bir hata oluştu.")
 
     embed_inputs = [title or ""]
     for ch in abs_chunks:
@@ -227,7 +235,7 @@ async def add_pdf(
 # PDF SİL
 # ══════════════════════════════════════════════════════════════════
 
-@router.delete("/remove/{pdf_name:path}", dependencies=[Depends(require_admin_key)])
+@router.delete("/remove/{pdf_name:path}", dependencies=[Depends(require_admin)])
 async def remove_pdf(pdf_name: str):
     deleted_pg = await pg_delete_paper(pdf_name)
     if not deleted_pg:
@@ -334,7 +342,7 @@ async def get_stats():
 # POST /database/reconcile
 # ══════════════════════════════════════════════════════════════════
 
-@router.post("/reconcile", dependencies=[Depends(require_admin_key)])
+@router.post("/reconcile", dependencies=[Depends(require_admin)])
 async def reconcile_database():
     """
     İki yönlü tutarsızlık kontrolü:
@@ -461,7 +469,7 @@ async def reconcile_database():
 # SIFIRLA
 # ══════════════════════════════════════════════════════════════════
 
-@router.post("/reset", dependencies=[Depends(require_admin_key)])
+@router.post("/reset", dependencies=[Depends(require_admin)])
 async def reset_database():
     await pg_truncate_all()
 

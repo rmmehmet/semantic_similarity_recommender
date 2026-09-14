@@ -7,6 +7,7 @@ import {
   previewSectionPDF,
   validatePdfFile,
 } from "../../../services/service";
+import UserMenu from "../../UserMenu";
 import "./PdfSplitter.css";
 
 // ── Navbar ─────────────────────────────────────────────────────────
@@ -37,9 +38,12 @@ function Navbar() {
           </li>
         ))}
       </ul>
-      <button className="ps-nav__burger" onClick={() => setMenuOpen(p => !p)}>
-        <span /><span /><span />
-      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <UserMenu />
+        <button className="ps-nav__burger" onClick={() => setMenuOpen(p => !p)}>
+          <span /><span /><span />
+        </button>
+      </div>
     </nav>
   );
 }

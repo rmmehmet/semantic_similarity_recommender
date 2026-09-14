@@ -4,14 +4,15 @@ export const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 // PDF/embedding/BERT işlemleri uzun sürebilir — sonsuz beklemeyi önlemek için
 // makul ama cömert bir timeout (2 dk). Backend takılırsa kullanıcı net bir hata görür.
-const api = axios.create({ baseURL: API_BASE, timeout: 120_000 });
+// withCredentials: true — oturum httpOnly çerezde taşınır (bkz. AuthContext),
+// bu olmadan tarayıcı cross-origin (frontend:5173 ↔ backend:8000) isteklerde
+// çerezi ne gönderir ne de kaydeder.
+const api = axios.create({ baseURL: API_BASE, timeout: 120_000, withCredentials: true });
 
 // Backend'de ADMIN_API_KEY ayarlıysa (bkz. backend/.env.example), yıkıcı/idari
-// uçlar (add/remove/reset/reconcile) bu header'ı bekler.
-// NOT: Bu, saf bir SPA'da tarayıcı dev tools'undan görülebilen bir anahtardır —
-// gerçek çok kullanıcılı yetkilendirme değildir, sadece rastgele internet
-// trafiğine karşı bir engeldir. Gerçek kullanıcı bazlı yetkilendirme gerekirse
-// backend'e bir login/JWT katmanı eklenmelidir.
+// uçlar (add/remove/reset/reconcile) bu header'ı da kabul eder — asıl admin
+// yetkisi artık ADMIN_EMAILS ile kayıt olan gerçek kullanıcı oturumundandır,
+// bu header sadece tarayıcı dışı/otomasyon senaryoları için opsiyonel bir yoldur.
 const adminApiKey = import.meta.env.VITE_ADMIN_API_KEY;
 if (adminApiKey) {
   api.defaults.headers.common["X-API-Key"] = adminApiKey;
@@ -35,7 +36,7 @@ export const downloadSectionPDF = async (file, section) => {
   fd.append("start_page", section.start_page);
   fd.append("end_page", section.end_page);
   fd.append("title", section.clean_title || section.title || "bolum");
-  const res = await fetch(`${API_BASE}/pdf/download-section`, { method: "POST", body: fd });
+  const res = await fetch(`${API_BASE}/pdf/download-section`, { method: "POST", body: fd, credentials: "include" });
   if (!res.ok) throw new Error("PDF download is failed");
   const blob = await res.blob();
   const url  = URL.createObjectURL(blob);
@@ -56,7 +57,7 @@ export const previewSectionPDF = async (file, section) => {
   fd.append("file", file);
   fd.append("start_page", section.start_page);
   fd.append("end_page",   section.end_page);
-  const res = await fetch(`${API_BASE}/pdf/preview-section`, { method: "POST", body: fd });
+  const res = await fetch(`${API_BASE}/pdf/preview-section`, { method: "POST", body: fd, credentials: "include" });
   if (!res.ok) throw new Error("PDF preview failed");
   return URL.createObjectURL(await res.blob());
 };
@@ -126,7 +127,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 180_000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
+    const res = await fetch(url, { ...options, credentials: "include", signal: controller.signal });
     return res;
   } finally {
     clearTimeout(timer);
@@ -283,4 +284,61 @@ export function validatePdfFile(file) {
     return `Dosya çok büyük (maksimum ${MAX_UPLOAD_MB} MB).`;
   }
   return null;
+}
+
+// ════════════════════════════════════════════
+//  Auth
+// ════════════════════════════════════════════
+
+function _extractErrorMessage(err, fallback) {
+  const detail = err?.response?.data?.detail;
+  if (!detail) return err?.message || fallback;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    // FastAPI/pydantic doğrulama hatası formatı: [{loc, msg}, ...]
+    return detail.map((d) => d.msg || JSON.stringify(d)).join(" ");
+  }
+  return fallback;
+}
+
+export async function registerUser({ email, firstName, lastName, phone, password, passwordConfirm }) {
+  try {
+    const res = await api.post("/auth/register", {
+      email,
+      first_name: firstName,
+      last_name: lastName,
+      phone,
+      password,
+      password_confirm: passwordConfirm,
+    });
+    return res.data.user;
+  } catch (err) {
+    throw new Error(_extractErrorMessage(err, "Kayıt başarısız."));
+  }
+}
+
+export async function loginUser({ email, password }) {
+  try {
+    const res = await api.post("/auth/login", { email, password });
+    return res.data.user;
+  } catch (err) {
+    throw new Error(_extractErrorMessage(err, "Giriş başarısız."));
+  }
+}
+
+export async function logoutUser() {
+  try {
+    await api.post("/auth/logout");
+  } catch (_) {
+    // Çıkış her koşulda client tarafında da sonuçlanmalı.
+  }
+}
+
+export async function fetchCurrentUser() {
+  try {
+    const res = await api.get("/auth/me");
+    return res.data.user;
+  } catch (_) {
+    return null;
+  }
 }

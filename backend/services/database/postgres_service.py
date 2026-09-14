@@ -331,3 +331,51 @@ async def pg_truncate_all() -> None:
         await conn.execute(
             "TRUNCATE papers RESTART IDENTITY CASCADE"
         )
+    # NOT: `users` tablosu buraya KASITLI OLARAK dahil edilmemiştir —
+    # veri tabanı sıfırlama (reset) hiçbir zaman kullanıcı hesaplarını silmemeli.
+
+
+# ══════════════════════════════════════════════════════════════════
+# USERS
+# ══════════════════════════════════════════════════════════════════
+
+async def pg_create_user(
+    email: str,
+    phone: str,
+    first_name: str,
+    last_name: str,
+    password_hash: str,
+    role: str = "user",
+) -> dict:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO users (email, phone, first_name, last_name, password_hash, role)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, email, phone, first_name, last_name, role, is_active, created_at
+            """,
+            email, phone, first_name, last_name, password_hash, role,
+        )
+        return dict(row)
+
+
+async def pg_get_user_by_email(email: str) -> Optional[dict]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM users WHERE email = $1", email)
+        return dict(row) if row else None
+
+
+async def pg_get_user_by_phone(phone: str) -> Optional[dict]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM users WHERE phone = $1", phone)
+        return dict(row) if row else None
+
+
+async def pg_get_user_by_id(user_id: int) -> Optional[dict]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM users WHERE id = $1", user_id)
+        return dict(row) if row else None

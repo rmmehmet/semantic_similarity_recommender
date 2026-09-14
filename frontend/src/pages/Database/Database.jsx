@@ -10,6 +10,8 @@ import {
   dbPreviewUrl,
   validatePdfFile,
 } from "../../../services/service";
+import UserMenu from "../../UserMenu";
+import { useAuth } from "../../useAuth";
 import "./Database.css";
 
 // ══════════════════════════════════════════════════════════════════
@@ -47,11 +49,14 @@ function Navbar() {
           </li>
         ))}
       </ul>
-      <button className="db-nav__burger" onClick={() => setOpen((v) => !v)}>
-        <span />
-        <span />
-        <span />
-      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <UserMenu />
+        <button className="db-nav__burger" onClick={() => setOpen((v) => !v)}>
+          <span />
+          <span />
+          <span />
+        </button>
+      </div>
     </nav>
   );
 }
@@ -228,6 +233,7 @@ function UploadRow({ file, status, result, error }) {
 // PDF LİSTE SATIRI
 // ══════════════════════════════════════════════════════════════════
 function PdfRow({ doc, index, onDelete, onDetail, onPreview }) {
+  const { isAdmin } = useAuth();
   const [confirm, setConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -285,24 +291,26 @@ function PdfRow({ doc, index, onDelete, onDetail, onPreview }) {
         </svg>
       </button>
 
-      {/* Sil butonu */}
-      <button
-        className={`db-pdf-row__del${confirm ? " confirm" : ""}`}
-        onClick={handleDelete}
-        disabled={deleting}
-        onBlur={() => setTimeout(() => setConfirm(false), 200)}
-        title="Sil"
-      >
-        {deleting ? (
-          <span className="db-spin-sm" />
-        ) : confirm ? (
-          "Emin misin?"
-        ) : (
-          <svg viewBox="0 0 16 16" fill="none">
-            <path d="M3 4h10M6 4V3h4v1M5 4v9a1 1 0 001 1h4a1 1 0 001-1V4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        )}
-      </button>
+      {/* Sil butonu — sadece admin */}
+      {isAdmin && (
+        <button
+          className={`db-pdf-row__del${confirm ? " confirm" : ""}`}
+          onClick={handleDelete}
+          disabled={deleting}
+          onBlur={() => setTimeout(() => setConfirm(false), 200)}
+          title="Sil"
+        >
+          {deleting ? (
+            <span className="db-spin-sm" />
+          ) : confirm ? (
+            "Emin misin?"
+          ) : (
+            <svg viewBox="0 0 16 16" fill="none">
+              <path d="M3 4h10M6 4V3h4v1M5 4v9a1 1 0 001 1h4a1 1 0 001-1V4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </button>
+      )}
     </div>
   );
 }
@@ -580,6 +588,7 @@ function DetailPanel({ pdfName, onClose, onPreview }) {
 // ANA BİLEŞEN
 // ══════════════════════════════════════════════════════════════════
 export default function Database() {
+  const { isAdmin } = useAuth();
   const [files, setFiles]             = useState([]);
   const [bookName, setBookName]       = useState("");
   const [year, setYear]               = useState("");
@@ -592,7 +601,7 @@ export default function Database() {
   const [docs, setDocs]               = useState([]);
   const [docsLoading, setDocsLoading] = useState(false);
   const [search, setSearch]           = useState("");
-  const [tab, setTab]                 = useState("upload");
+  const [tab, setTab]                 = useState(isAdmin ? "upload" : "list");
 
   const [selectedPdf, setSelectedPdf]   = useState(null); // detay modal
   const [previewPdf, setPreviewPdf]     = useState(null); // önizleme modal
@@ -775,18 +784,20 @@ export default function Database() {
       {/* Sekmeler + İçerik */}
       <div className="db-layout">
         <div className="db-tabs">
-          <button className={`db-tab${tab === "upload" ? " active" : ""}`} onClick={() => setTab("upload")}>
-            <svg viewBox="0 0 16 16" fill="none">
-              <path d="M8 2v8M5 5l3-3 3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-              <path d="M2 12h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-            </svg>
-            PDF Yükle
-            {uploadRows.length > 0 && (
-              <span className={`db-tab__badge${doneAll ? (errorCount > 0 ? " err" : " ok") : ""}`}>
-                {doneAll ? `${uploadedCount}/${uploadRows.length}` : "…"}
-              </span>
-            )}
-          </button>
+          {isAdmin && (
+            <button className={`db-tab${tab === "upload" ? " active" : ""}`} onClick={() => setTab("upload")}>
+              <svg viewBox="0 0 16 16" fill="none">
+                <path d="M8 2v8M5 5l3-3 3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M2 12h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              </svg>
+              PDF Yükle
+              {uploadRows.length > 0 && (
+                <span className={`db-tab__badge${doneAll ? (errorCount > 0 ? " err" : " ok") : ""}`}>
+                  {doneAll ? `${uploadedCount}/${uploadRows.length}` : "…"}
+                </span>
+              )}
+            </button>
+          )}
           <button className={`db-tab${tab === "list" ? " active" : ""}`} onClick={() => setTab("list")}>
             <svg viewBox="0 0 16 16" fill="none">
               <line x1="2" y1="5" x2="14" y2="5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -799,7 +810,7 @@ export default function Database() {
         </div>
 
         {/* ── Yükleme sekmesi ──────────────────────────────────────── */}
-        {tab === "upload" && (
+        {isAdmin && tab === "upload" && (
           <div className="db-upload-panel">
             <div className="db-upload-form">
               <div className="db-section-label">
@@ -956,9 +967,11 @@ export default function Database() {
                   <button className="db-search-clear" onClick={() => setSearch("")}>✕</button>
                 )}
               </div>
-              <button className="db-reset-btn" onClick={handleReset} disabled={resetting}>
-                {resetting ? <span className="db-spin-sm" /> : "Sıfırla"}
-              </button>
+              {isAdmin && (
+                <button className="db-reset-btn" onClick={handleReset} disabled={resetting}>
+                  {resetting ? <span className="db-spin-sm" /> : "Sıfırla"}
+                </button>
+              )}
               <button className="db-refresh-btn" onClick={() => { loadDocs(); loadStats(); }}>
                 <svg viewBox="0 0 16 16" fill="none">
                   <path d="M13 3A7 7 0 103.5 10.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />

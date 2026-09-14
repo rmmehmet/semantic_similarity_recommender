@@ -23,16 +23,27 @@ from dotenv import load_dotenv
 # HERHANGİ bir proje modülü import edilmeden ÖNCE yüklenmelidir.
 load_dotenv()
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from routers.auth_router       import router as auth_router
 from routers.database_router  import router as database_router
 from routers.similarity_router import router as similarity_router
 from routers.pdf_router        import router as pdf_router
 from routers.suggest_router    import router as suggest_router
+from services.auth import get_current_user
 from services.config import CORS_ORIGINS, OLLAMA_URL
 
 # ── Logging ──────────────────────────────────────────────────────
+# Windows konsolları varsayılan olarak UTF-8 olmayan bir codepage (örn.
+# cp1254) kullanabilir; log mesajlarındaki "✓"/"═" gibi karakterler bu
+# durumda UnicodeEncodeError ile sessizce (ama gürültülü şekilde) başarısız
+# olur. stdout'u açıkça UTF-8'e zorluyoruz.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, ValueError):
+    pass  # örn. stdout yeniden yönlendirilmiş/kapalıysa (bazı servis/CI ortamları)
+
 # Çalışma dizininden bağımsız, main.py'ye göre sabit bir konum kullanılır;
 # döndürme (rotation) ile log dosyasının sınırsız büyümesi engellenir.
 _LOG_DIR = Path(os.getenv("LOG_DIR", Path(__file__).resolve().parent))
@@ -72,10 +83,15 @@ app.add_middleware(
 # ── Router kaydı ─────────────────────────────────────────────────
 # NOT: prefix'ler frontend/services/service.js'deki çağrı yollarıyla
 # (/pdf/..., /similarity/...) birebir eşleşmelidir.
-app.include_router(database_router,   prefix="/db")
-app.include_router(similarity_router, prefix="/similarity")
-app.include_router(pdf_router,        prefix="/pdf")
-app.include_router(suggest_router,    prefix="/suggest")
+#
+# auth_router hariç TÜM router'lar geçerli bir oturum (giriş yapmış kullanıcı)
+# gerektirir — database_router içindeki add/remove/reset/reconcile gibi
+# yıkıcı uçlar ayrıca kendi route'unda require_admin ile admin rolü de ister.
+app.include_router(auth_router, prefix="/auth")
+app.include_router(database_router,   prefix="/db",         dependencies=[Depends(get_current_user)])
+app.include_router(similarity_router, prefix="/similarity", dependencies=[Depends(get_current_user)])
+app.include_router(pdf_router,        prefix="/pdf",        dependencies=[Depends(get_current_user)])
+app.include_router(suggest_router,    prefix="/suggest",    dependencies=[Depends(get_current_user)])
 
 
 @app.get("/health")

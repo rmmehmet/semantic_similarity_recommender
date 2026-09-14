@@ -37,3 +37,23 @@ RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "20"))
 
 # ── Ollama ───────────────────────────────────────────────────────
 OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
+
+# ── Kullanıcı Auth (JWT) ─────────────────────────────────────────
+# JWT_SECRET ZORUNLUDUR — services/security.py import edilirken kontrol
+# edilir ve ayarlanmamışsa uygulama başlamaz (bkz. o modüldeki hata mesajı).
+# Üretmek için: python -c "import secrets; print(secrets.token_hex(32))"
+JWT_SECRET: str | None = os.getenv("JWT_SECRET") or None
+JWT_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", str(60 * 24 * 7)))  # 7 gün
+
+# Kayıt olurken bu listedeki e-postalarla açılan hesap otomatik "admin"
+# rolü alır — herkes rolünü kendi seçemez. Virgülle ayrılmış, küçük harfe
+# duyarsız (karşılaştırma sırasında lower() uygulanır).
+ADMIN_EMAILS: set[str] = {
+    e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()
+}
+
+# Oturum çerezi — httpOnly, JS'den erişilemez (XSS'e karşı).
+AUTH_COOKIE_NAME: str = "altayai_token"
+# Production'da HTTPS üzerinden servis ediliyorsa COOKIE_SECURE=true olmalı;
+# yerel http://localhost geliştirmede tarayıcı Secure çerezi kabul etmez.
+COOKIE_SECURE: bool = os.getenv("COOKIE_SECURE", "false").lower() == "true"

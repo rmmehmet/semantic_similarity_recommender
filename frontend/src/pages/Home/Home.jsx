@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import UserMenu from "../../UserMenu";
 import "./Home.css";
 
 const NAV_LINKS = [
@@ -176,9 +177,12 @@ export default function Home() {
             </li>
           ))}
         </ul>
-        <button className="hm-nav__burger" onClick={() => setMenuOpen(p => !p)} aria-label="Menü">
-          <span /><span /><span />
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <UserMenu />
+          <button className="hm-nav__burger" onClick={() => setMenuOpen(p => !p)} aria-label="Menü">
+            <span /><span /><span />
+          </button>
+        </div>
       </nav>
 
       {/* ── Hero ── */}

@@ -2,13 +2,20 @@
 """
 services/auth.py
 ══════════════════
-Yıkıcı/idari endpoint'ler (reset, remove, reconcile, add) için basit
-API-key doğrulaması. `X-API-Key` header'ı `ADMIN_API_KEY` ortam
-değişkenine eşit olmalıdır.
+Kimlik doğrulama bağımlılıkları (FastAPI Depends).
 
-ADMIN_API_KEY ayarlanmamışsa (yerel geliştirme), doğrulama atlanır ve
-her başlatmada uyarı loglanır — production'da bu değişken MUTLAKA
-ayarlanmalıdır.
+İki mekanizma bir arada çalışır:
+
+  1) Kullanıcı oturumu (birincil, production yolu) — httpOnly çerezde
+     taşınan JWT. `get_current_user` / `get_current_user_optional` /
+     `require_admin` bunu kullanır. Kayıt/giriş routers/auth_router.py'de.
+
+  2) Statik API anahtarı (ikincil, tarayıcı dışı/otomasyon için) —
+     `X-API-Key` header'ı `ADMIN_API_KEY` ortam değişkenine eşitse
+     `require_admin` bunu da admin yetkisi olarak kabul eder. Hiçbiri
+     ayarlanmamışsa (ne ADMIN_API_KEY ne de geçerli bir oturum) istek
+     reddedilir — artık "auth tamamen kapalı" diye bir dev-modu yoktur,
+     çünkü artık gerçek kullanıcı girişi var.
 """
 
 from __future__ import annotations
@@ -16,22 +23,52 @@ from __future__ import annotations
 import logging
 import secrets
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Request
 
 from services.config import ADMIN_API_KEY
+from services.security import decode_token
 
 logger = logging.getLogger(__name__)
 
-if not ADMIN_API_KEY:
-    logger.warning(
-        "[Auth] ADMIN_API_KEY tanımlı değil — idari uçlar (reset/remove/reconcile) "
-        "kimlik doğrulaması OLMADAN açık. Production'da bu değişkeni ayarlayın."
-    )
+AUTH_COOKIE_NAME = "altayai_token"
 
 
-async def require_admin_key(x_api_key: str | None = Header(default=None)) -> None:
-    if not ADMIN_API_KEY:
-        # Dev ortamı — auth atlanır (yukarıda uyarı loglandı).
-        return
-    if not x_api_key or not secrets.compare_digest(x_api_key, ADMIN_API_KEY):
-        raise HTTPException(status_code=401, detail="Geçersiz veya eksik API anahtarı")
+def _read_token(request: Request) -> str | None:
+    return request.cookies.get(AUTH_COOKIE_NAME)
+
+
+async def get_current_user(request: Request) -> dict:
+    """Oturum ZORUNLU — token yoksa/geçersizse 401 döner."""
+    token = _read_token(request)
+    if not token:
+        raise HTTPException(status_code=401, detail="Oturum açmanız gerekiyor.")
+    return decode_token(token)
+
+
+async def get_current_user_optional(request: Request) -> dict | None:
+    """Oturum opsiyonel — token yoksa/geçersizse None döner, hata fırlatmaz."""
+    token = _read_token(request)
+    if not token:
+        return None
+    try:
+        return decode_token(token)
+    except HTTPException:
+        return None
+
+
+async def require_admin(
+    request: Request,
+    x_api_key: str | None = Header(default=None),
+) -> dict:
+    """
+    Yıkıcı/idari uçlar için: ya geçerli bir ADMIN_API_KEY header'ı,
+    ya da rolü 'admin' olan geçerli bir kullanıcı oturumu gerekir.
+    """
+    if ADMIN_API_KEY and x_api_key and secrets.compare_digest(x_api_key, ADMIN_API_KEY):
+        return {"sub": None, "email": "service-account", "role": "admin"}
+
+    user = await get_current_user_optional(request)
+    if user and user.get("role") == "admin":
+        return user
+
+    raise HTTPException(status_code=403, detail="Bu işlem için admin yetkisi gerekir.")

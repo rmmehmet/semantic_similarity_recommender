@@ -4,15 +4,21 @@ import PdfSplitter from "./pages/PdfSplitter/PdfSplitter";
 import Similarity  from "./pages/Similarity/Similarity";
 import Suggest     from "./pages/Suggest/Suggest";
 import Database from "./pages/Database/Database";
+import Login    from "./pages/Auth/Login";
+import Register from "./pages/Auth/Register";
+import ProtectedRoute from "./ProtectedRoute";
 
 export default function App() {
   return (
     <Routes>
-      <Route path="/"         element={<Home />}        />
-      <Route path="/split"    element={<PdfSplitter />} />
-      <Route path="/search"   element={<Similarity />}  />
-      <Route path="/suggest"  element={<Suggest />}     />
-      <Route path="/database" element={<Database />}    />
+      <Route path="/login"    element={<Login />}    />
+      <Route path="/register" element={<Register />} />
+
+      <Route path="/"         element={<ProtectedRoute><Home /></ProtectedRoute>}        />
+      <Route path="/split"    element={<ProtectedRoute><PdfSplitter /></ProtectedRoute>} />
+      <Route path="/search"   element={<ProtectedRoute><Similarity /></ProtectedRoute>}  />
+      <Route path="/suggest"  element={<ProtectedRoute><Suggest /></ProtectedRoute>}     />
+      <Route path="/database" element={<ProtectedRoute><Database /></ProtectedRoute>}    />
     </Routes>
   );
 }

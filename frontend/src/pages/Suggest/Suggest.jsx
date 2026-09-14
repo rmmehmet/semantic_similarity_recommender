@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { suggestSearch, validatePdfFile } from "../../../services/service.js";
+import UserMenu from "../../UserMenu";
 import "./Suggest.css";
 
 // ── Sabitler ───────────────────────────────────────────────────────
@@ -61,9 +62,12 @@ function Navbar() {
           </li>
         ))}
       </ul>
-      <button className="sug-nav__burger" onClick={() => setOpen(v=>!v)}>
-        <span/><span/><span/>
-      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <UserMenu />
+        <button className="sug-nav__burger" onClick={() => setOpen(v=>!v)}>
+          <span/><span/><span/>
+        </button>
+      </div>
     </nav>
   );
 }

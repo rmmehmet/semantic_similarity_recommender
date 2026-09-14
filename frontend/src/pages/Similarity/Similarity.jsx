@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { compareDocuments, compareHighlight, validatePdfFile } from "../../../services/service";
+import UserMenu from "../../UserMenu";
 import "./Similarity.css";
 
 // ── Algoritma tanımları + eşikler ─────────────────────────────────
@@ -37,7 +38,10 @@ function Navbar() {
             onClick={() => { navigate(p); setOpen(false); }}>{l}</button></li>
         ))}
       </ul>
-      <button className="sim-nav__burger" onClick={() => setOpen(v=>!v)}><span/><span/><span/></button>
+      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <UserMenu />
+        <button className="sim-nav__burger" onClick={() => setOpen(v=>!v)}><span/><span/><span/></button>
+      </div>
     </nav>
   );
 }
