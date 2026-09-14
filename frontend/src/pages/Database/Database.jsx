@@ -233,7 +233,6 @@ function UploadRow({ file, status, result, error }) {
 // PDF LİSTE SATIRI
 // ══════════════════════════════════════════════════════════════════
 function PdfRow({ doc, index, onDelete, onDetail, onPreview }) {
-  const { isAdmin } = useAuth();
   const [confirm, setConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -291,26 +290,24 @@ function PdfRow({ doc, index, onDelete, onDetail, onPreview }) {
         </svg>
       </button>
 
-      {/* Sil butonu — sadece admin */}
-      {isAdmin && (
-        <button
-          className={`db-pdf-row__del${confirm ? " confirm" : ""}`}
-          onClick={handleDelete}
-          disabled={deleting}
-          onBlur={() => setTimeout(() => setConfirm(false), 200)}
-          title="Sil"
-        >
-          {deleting ? (
-            <span className="db-spin-sm" />
-          ) : confirm ? (
-            "Emin misin?"
-          ) : (
-            <svg viewBox="0 0 16 16" fill="none">
-              <path d="M3 4h10M6 4V3h4v1M5 4v9a1 1 0 001 1h4a1 1 0 001-1V4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          )}
-        </button>
-      )}
+      {/* Sil butonu — herkes kendi belgesini silebilir */}
+      <button
+        className={`db-pdf-row__del${confirm ? " confirm" : ""}`}
+        onClick={handleDelete}
+        disabled={deleting}
+        onBlur={() => setTimeout(() => setConfirm(false), 200)}
+        title="Sil"
+      >
+        {deleting ? (
+          <span className="db-spin-sm" />
+        ) : confirm ? (
+          "Emin misin?"
+        ) : (
+          <svg viewBox="0 0 16 16" fill="none">
+            <path d="M3 4h10M6 4V3h4v1M5 4v9a1 1 0 001 1h4a1 1 0 001-1V4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </button>
     </div>
   );
 }
@@ -601,7 +598,7 @@ export default function Database() {
   const [docs, setDocs]               = useState([]);
   const [docsLoading, setDocsLoading] = useState(false);
   const [search, setSearch]           = useState("");
-  const [tab, setTab]                 = useState(isAdmin ? "upload" : "list");
+  const [tab, setTab]                 = useState("upload");
 
   const [selectedPdf, setSelectedPdf]   = useState(null); // detay modal
   const [previewPdf, setPreviewPdf]     = useState(null); // önizleme modal
@@ -784,20 +781,18 @@ export default function Database() {
       {/* Sekmeler + İçerik */}
       <div className="db-layout">
         <div className="db-tabs">
-          {isAdmin && (
-            <button className={`db-tab${tab === "upload" ? " active" : ""}`} onClick={() => setTab("upload")}>
-              <svg viewBox="0 0 16 16" fill="none">
-                <path d="M8 2v8M5 5l3-3 3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M2 12h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-              </svg>
-              PDF Yükle
-              {uploadRows.length > 0 && (
-                <span className={`db-tab__badge${doneAll ? (errorCount > 0 ? " err" : " ok") : ""}`}>
-                  {doneAll ? `${uploadedCount}/${uploadRows.length}` : "…"}
-                </span>
-              )}
-            </button>
-          )}
+          <button className={`db-tab${tab === "upload" ? " active" : ""}`} onClick={() => setTab("upload")}>
+            <svg viewBox="0 0 16 16" fill="none">
+              <path d="M8 2v8M5 5l3-3 3 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M2 12h12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+            </svg>
+            PDF Yükle
+            {uploadRows.length > 0 && (
+              <span className={`db-tab__badge${doneAll ? (errorCount > 0 ? " err" : " ok") : ""}`}>
+                {doneAll ? `${uploadedCount}/${uploadRows.length}` : "…"}
+              </span>
+            )}
+          </button>
           <button className={`db-tab${tab === "list" ? " active" : ""}`} onClick={() => setTab("list")}>
             <svg viewBox="0 0 16 16" fill="none">
               <line x1="2" y1="5" x2="14" y2="5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
@@ -810,7 +805,7 @@ export default function Database() {
         </div>
 
         {/* ── Yükleme sekmesi ──────────────────────────────────────── */}
-        {isAdmin && tab === "upload" && (
+        {tab === "upload" && (
           <div className="db-upload-panel">
             <div className="db-upload-form">
               <div className="db-section-label">

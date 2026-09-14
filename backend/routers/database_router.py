@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import shutil
 import threading
 from functools import partial
 from pathlib import Path
@@ -12,7 +13,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
-from services.auth import require_admin
+from services.auth import get_current_user, require_admin
 from services.upload_validation import read_and_validate_pdf
 from services.text_preprocessing import (
     extract_title_from_pdf,
@@ -85,32 +86,52 @@ async def _run_blocking(fn, *args, **kwargs):
     return await loop.run_in_executor(None, partial(fn, *args, **kwargs))
 
 
+def _uid(current_user: dict) -> int:
+    """JWT payload'ından kullanıcı id'sini çıkarır."""
+    return int(current_user["sub"])
+
+
+def _user_storage_dir(user_id: int) -> Path:
+    """
+    Belgeler kullanıcıya özeldir — disk depolaması da kullanıcı bazlı bir alt
+    klasörde tutulur. Aksi halde iki farklı kullanıcı aynı dosya adını
+    kullandığında (örn. "cv.pdf") diskte birbirinin dosyasının üzerine yazardı.
+    """
+    d = PDF_STORAGE_DIR / str(user_id)
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 # ══════════════════════════════════════════════════════════════════
 # PDF YÜKLE
 # ══════════════════════════════════════════════════════════════════
 
-@router.post("/add", dependencies=[Depends(require_admin)])
+@router.post("/add")
 async def add_pdf(
     file: UploadFile   = File(...),
     book_name: str     = Form(""),
     year: int          = Form(0),
     force_update: bool = Form(False),
+    current_user: dict = Depends(get_current_user),
 ):
+    user_id = _uid(current_user)
     pdf_bytes = await read_and_validate_pdf(file)
     pdf_name  = file.filename or "unknown.pdf"
 
     # İçerik hash'i — dosya adından bağımsız gerçek tekilleştirme anahtarı.
     # "Aynı isim farklı içerik" ve "farklı isim aynı içerik" senaryolarını
     # ayırt edebilmek için pdf_name yerine (veya onunla birlikte) kullanılır.
+    # Tekilleştirme her kullanıcının KENDİ alanıyla sınırlıdır.
     content_hash = hashlib.sha256(pdf_bytes).hexdigest()
 
-    existed  = await pg_paper_exists(pdf_name)
-    hash_dup = await pg_get_paper_by_hash(content_hash)
+    existed  = await pg_paper_exists(pdf_name, user_id)
+    hash_dup = await pg_get_paper_by_hash(content_hash, user_id)
 
     if hash_dup and hash_dup["pdf_name"] != pdf_name:
-        # Aynı içerik, farklı bir isim altında zaten yüklenmiş.
-        # force_update bile bunu atlamamalı — amaç BU ismi güncellemek,
-        # başka bir isim altında duplicate oluşturmak değil.
+        # Aynı içerik, bu kullanıcının kendi alanında farklı bir isim
+        # altında zaten yüklenmiş. force_update bile bunu atlamamalı —
+        # amaç BU ismi güncellemek, başka bir isim altında duplicate
+        # oluşturmak değil.
         return {
             "status":           "duplicate_content",
             "pdf_name":         pdf_name,
@@ -139,7 +160,7 @@ async def add_pdf(
         # Aynı isim + aynı içerik → gerçek bir tam eşleşme, işe yaramaz tekrar işleme.
         return {"status": "skipped", "pdf_name": pdf_name, "reason": "already_exists"}
 
-    disk_path = PDF_STORAGE_DIR / Path(pdf_name).name
+    disk_path = _user_storage_dir(user_id) / Path(pdf_name).name
     disk_path.write_bytes(pdf_bytes)
 
     # Diskten sonraki adımlardan biri beklenmedik şekilde patlarsa (extraction,
@@ -153,7 +174,7 @@ async def add_pdf(
         # milvus_synced=FALSE olarak başlar
         paper_id = await pg_upsert_paper(
             pdf_name=pdf_name, raw_title=title, abstract=abstract,
-            fulltext=fulltext, book_name=book_name, year=year,
+            fulltext=fulltext, user_id=user_id, book_name=book_name, year=year,
             content_hash=content_hash,
         )
 
@@ -161,7 +182,7 @@ async def add_pdf(
         await pg_delete_chunks(paper_id)
         await pg_insert_chunks(paper_id, chunk_records)
     except Exception as exc:
-        logger.error("[Add] İşleme hatası — %s: %s", pdf_name, exc)
+        logger.error("[Add] İşleme hatası — %s (user=%s): %s", pdf_name, user_id, exc)
         disk_path.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail="PDF işlenirken bir hata oluştu.")
 
@@ -191,18 +212,18 @@ async def add_pdf(
     #   3) flush tek seferde, sonunda ve paralel yapılır.
     try:
         if existed:
-            await _run_blocking(milvus_delete_pdf, pdf_name, False)  # flush=False
+            await _run_blocking(milvus_delete_pdf, pdf_name, user_id, False)  # flush=False
 
         insert_tasks = [
-            _run_blocking(milvus_insert_title, pdf_name, title, title_vec, False),
+            _run_blocking(milvus_insert_title, pdf_name, title, title_vec, user_id, False),
             _run_blocking(
                 milvus_insert_abstract,
-                pdf_name, abs_chunks[0] if abs_chunks else abstract, abstract_vec, False,
+                pdf_name, abs_chunks[0] if abs_chunks else abstract, abstract_vec, user_id, False,
             ),
         ]
         if ft_chunks and ft_vecs:
             insert_tasks.append(
-                _run_blocking(milvus_insert_fulltext_chunks, pdf_name, ft_chunks, ft_vecs, False)
+                _run_blocking(milvus_insert_fulltext_chunks, pdf_name, ft_chunks, ft_vecs, user_id, False)
             )
         await asyncio.gather(*insert_tasks)
 
@@ -212,11 +233,11 @@ async def add_pdf(
         await asyncio.gather(*(_run_blocking(milvus_flush, name) for name in flush_targets))
 
         # Başarılıysa senkronize olarak işaretle
-        await pg_mark_synced(pdf_name)
+        await pg_mark_synced(pdf_name, user_id)
         milvus_ok = True
 
     except Exception as exc:
-        logger.error("[Milvus] Yazım hatası — %s: %s", pdf_name, exc)
+        logger.error("[Milvus] Yazım hatası — %s (user=%s): %s", pdf_name, user_id, exc)
         milvus_ok = False
 
     return {
@@ -235,20 +256,21 @@ async def add_pdf(
 # PDF SİL
 # ══════════════════════════════════════════════════════════════════
 
-@router.delete("/remove/{pdf_name:path}", dependencies=[Depends(require_admin)])
-async def remove_pdf(pdf_name: str):
-    deleted_pg = await pg_delete_paper(pdf_name)
+@router.delete("/remove/{pdf_name:path}")
+async def remove_pdf(pdf_name: str, current_user: dict = Depends(get_current_user)):
+    user_id = _uid(current_user)
+    deleted_pg = await pg_delete_paper(pdf_name, user_id)
     if not deleted_pg:
         raise HTTPException(status_code=404, detail="PDF bulunamadı")
 
     # Milvus silme — başarısız olursa logla ama 500 verme
     # (PG zaten silindi, reconcile ile Milvus temizlenir)
     try:
-        await _run_blocking(milvus_delete_pdf, pdf_name)
+        await _run_blocking(milvus_delete_pdf, pdf_name, user_id)
     except Exception as exc:
-        logger.error("[Milvus] Silme hatası — %s: %s", pdf_name, exc)
+        logger.error("[Milvus] Silme hatası — %s (user=%s): %s", pdf_name, user_id, exc)
 
-    disk_path = PDF_STORAGE_DIR / Path(pdf_name).name
+    disk_path = _user_storage_dir(user_id) / Path(pdf_name).name
     if disk_path.exists():
         disk_path.unlink()
 
@@ -263,9 +285,9 @@ MAX_LIST_LIMIT = 1000
 
 
 @router.get("/list")
-async def list_pdfs(limit: int = 500):
+async def list_pdfs(limit: int = 500, current_user: dict = Depends(get_current_user)):
     limit = max(1, min(limit, MAX_LIST_LIMIT))
-    docs = await pg_list_papers(limit)
+    docs = await pg_list_papers(limit, _uid(current_user))
     return {"documents": docs}
 
 
@@ -274,8 +296,8 @@ async def list_pdfs(limit: int = 500):
 # ══════════════════════════════════════════════════════════════════
 
 @router.get("/detail/{pdf_name:path}")
-async def get_detail(pdf_name: str):
-    detail = await pg_get_detail(pdf_name)
+async def get_detail(pdf_name: str, current_user: dict = Depends(get_current_user)):
+    detail = await pg_get_detail(pdf_name, _uid(current_user))
     if not detail:
         raise HTTPException(status_code=404, detail="PDF bulunamadı")
     return {"detail": detail}
@@ -286,9 +308,10 @@ async def get_detail(pdf_name: str):
 # ══════════════════════════════════════════════════════════════════
 
 @router.get("/preview/{pdf_name:path}")
-async def preview_pdf(pdf_name: str):
+async def preview_pdf(pdf_name: str, current_user: dict = Depends(get_current_user)):
+    user_id = _uid(current_user)
     safe_name = Path(pdf_name).name
-    file_path = PDF_STORAGE_DIR / safe_name
+    file_path = _user_storage_dir(user_id) / safe_name
 
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="PDF diskte bulunamadı.")
@@ -316,14 +339,14 @@ async def preview_pdf(pdf_name: str):
 # ══════════════════════════════════════════════════════════════════
 
 @router.get("/stats")
-async def get_stats():
+async def get_stats(current_user: dict = Depends(get_current_user)):
     try:
         mv = await _run_blocking(milvus_stats)
     except Exception as exc:
         logger.error("[Stats] Milvus bağlantı hatası: %s", exc)
         raise HTTPException(status_code=503, detail="Milvus bağlantı hatası")
 
-    pg = await pg_stats()
+    pg = await pg_stats(_uid(current_user))
 
     return {
         "stats": {
@@ -339,18 +362,18 @@ async def get_stats():
 
 # ══════════════════════════════════════════════════════════════════
 # RECONCILE  —  PG ↔ Milvus tutarsızlıklarını tespit et ve düzelt
-# POST /database/reconcile
+# POST /database/reconcile  (admin-only, TÜM kullanıcılar için global bakım)
 # ══════════════════════════════════════════════════════════════════
 
 @router.post("/reconcile", dependencies=[Depends(require_admin)])
 async def reconcile_database():
     """
-    İki yönlü tutarsızlık kontrolü:
+    İki yönlü tutarsızlık kontrolü (tüm kullanıcılar dahil, admin-only):
 
     1. PG'de milvus_synced=FALSE olanlar
        → Milvus'ta kontrol et, eksikse yeniden embed + yaz
 
-    2. Milvus'taki pdf_name'ler PG'de yoksa
+    2. Milvus'taki (user_id, pdf_name) çiftleri PG'de yoksa
        → Hayalet vektör → Milvus'tan sil
 
     Döner:
@@ -371,12 +394,13 @@ async def reconcile_database():
 
     for record in unsynced:
         pdf_name = record["pdf_name"]
+        user_id  = record["user_id"]
         try:
             # PG'den tam metinleri çek
             from services.database.postgres_service import pg_get_paper, pg_get_chunks
-            paper = await pg_get_paper(pdf_name)
+            paper = await pg_get_paper(pdf_name, user_id)
             if not paper:
-                result["errors"].append({"pdf_name": pdf_name, "reason": "PG kaydı bulunamadı"})
+                result["errors"].append({"pdf_name": pdf_name, "user_id": user_id, "reason": "PG kaydı bulunamadı"})
                 continue
 
             title    = paper.get("raw_title") or ""
@@ -404,18 +428,18 @@ async def reconcile_database():
             # Bu kayıt milvus_synced=FALSE olduğu için Milvus'ta eksik/yarım
             # veri olabilir — silme burada gerçekten gerekli. Ama yine de
             # flush'ı erteleyip sonda paralel yapıyoruz (bkz. add_pdf).
-            await _run_blocking(milvus_delete_pdf, pdf_name, False)
+            await _run_blocking(milvus_delete_pdf, pdf_name, user_id, False)
 
             insert_tasks = [
-                _run_blocking(milvus_insert_title, pdf_name, title, title_vec, False),
+                _run_blocking(milvus_insert_title, pdf_name, title, title_vec, user_id, False),
                 _run_blocking(
                     milvus_insert_abstract,
-                    pdf_name, abs_chunks[0] if abs_chunks else abstract, abstract_vec, False,
+                    pdf_name, abs_chunks[0] if abs_chunks else abstract, abstract_vec, user_id, False,
                 ),
             ]
             if ft_chunks and ft_vecs:
                 insert_tasks.append(
-                    _run_blocking(milvus_insert_fulltext_chunks, pdf_name, ft_chunks, ft_vecs, False)
+                    _run_blocking(milvus_insert_fulltext_chunks, pdf_name, ft_chunks, ft_vecs, user_id, False)
                 )
             await asyncio.gather(*insert_tasks)
 
@@ -424,31 +448,31 @@ async def reconcile_database():
                 flush_targets.append(COL_FULLTEXT)
             await asyncio.gather(*(_run_blocking(milvus_flush, name) for name in flush_targets))
 
-            await pg_mark_synced(pdf_name)
-            result["fixed_unsynced"].append(pdf_name)
-            logger.info("[Reconcile] Düzeltildi: %s", pdf_name)
+            await pg_mark_synced(pdf_name, user_id)
+            result["fixed_unsynced"].append({"pdf_name": pdf_name, "user_id": user_id})
+            logger.info("[Reconcile] Düzeltildi: %s (user=%s)", pdf_name, user_id)
 
         except Exception as exc:
-            logger.error("[Reconcile] Hata — %s: %s", pdf_name, exc)
-            result["errors"].append({"pdf_name": pdf_name, "reason": str(exc)})
+            logger.error("[Reconcile] Hata — %s (user=%s): %s", pdf_name, user_id, exc)
+            result["errors"].append({"pdf_name": pdf_name, "user_id": user_id, "reason": str(exc)})
 
     # ── 2. Milvus'ta var, PG'de yok → hayalet vektör sil ─────────
     try:
-        milvus_names = await _run_blocking(milvus_get_all_pdf_names)
-        pg_names = await pg_get_all_pdf_names()
+        milvus_pairs = await _run_blocking(milvus_get_all_pdf_names)
+        pg_pairs = await pg_get_all_pdf_names()
 
-        ghosts = milvus_names - pg_names
+        ghosts = milvus_pairs - pg_pairs
         if ghosts:
             logger.warning("[Reconcile] %d hayalet vektör bulundu.", len(ghosts))
 
-        for ghost in ghosts:
+        for ghost_uid, ghost_name in ghosts:
             try:
-                await _run_blocking(milvus_delete_pdf, ghost)
-                result["ghost_removed"].append(ghost)
-                logger.info("[Reconcile] Hayalet silindi: %s", ghost)
+                await _run_blocking(milvus_delete_pdf, ghost_name, ghost_uid)
+                result["ghost_removed"].append({"pdf_name": ghost_name, "user_id": ghost_uid})
+                logger.info("[Reconcile] Hayalet silindi: %s (user=%s)", ghost_name, ghost_uid)
             except Exception as exc:
-                logger.error("[Reconcile] Hayalet silinemedi — %s: %s", ghost, exc)
-                result["errors"].append({"pdf_name": ghost, "reason": str(exc)})
+                logger.error("[Reconcile] Hayalet silinemedi — %s (user=%s): %s", ghost_name, ghost_uid, exc)
+                result["errors"].append({"pdf_name": ghost_name, "user_id": ghost_uid, "reason": str(exc)})
 
     except Exception as exc:
         logger.error("[Reconcile] Milvus sorgu hatası: %s", exc)
@@ -466,7 +490,7 @@ async def reconcile_database():
 
 
 # ══════════════════════════════════════════════════════════════════
-# SIFIRLA
+# SIFIRLA  (admin-only, TÜM kullanıcıların verilerini siler)
 # ══════════════════════════════════════════════════════════════════
 
 @router.post("/reset", dependencies=[Depends(require_admin)])
@@ -485,7 +509,11 @@ async def reset_database():
         logger.error("[Reset] Milvus koleksiyon hatası: %s", exc)
         raise HTTPException(status_code=500, detail="Milvus koleksiyon hatası")
 
-    for f in PDF_STORAGE_DIR.glob("*.pdf"):
-        f.unlink(missing_ok=True)
+    # Tüm kullanıcı alt klasörleriyle birlikte diskteki her şeyi temizle.
+    for entry in PDF_STORAGE_DIR.iterdir():
+        if entry.is_dir():
+            shutil.rmtree(entry, ignore_errors=True)
+        else:
+            entry.unlink(missing_ok=True)
 
     return {"status": "reset_complete"}

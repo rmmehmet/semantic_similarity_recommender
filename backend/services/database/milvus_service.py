@@ -73,36 +73,42 @@ def get_collection(name: str) -> Collection:
 # INSERT
 # ══════════════════════════════════════════════════════════════════
 
-def milvus_insert_title(pdf_name: str, title: str, vector: list[float], flush: bool = True) -> int:
+def milvus_insert_title(
+    pdf_name: str, title: str, vector: list[float], user_id: int, flush: bool = True
+) -> int:
     """Adds 1 entry to liftup_titles.
     Parameters:
     pdf_name (str): The name of the PDF file.
     title (str): The title of the paper.
     vector (list[float]): The embedding vector for the title.
+    user_id (int): Owning user's id — belgeler kullanıcıya özeldir.
     flush (bool): Whether to force an immediate segment flush (see module note on flush cost).
     Returns:
     int: The primary key of the inserted entry."""
     col = get_collection(COL_TITLES)
     data = [
-        {"pdf_name": pdf_name, "text": title, "vector": vector}
+        {"user_id": user_id, "pdf_name": pdf_name, "text": title, "vector": vector}
     ]
     res = col.insert(data)
     if flush:
         col.flush()
     return int(res.primary_keys[0])
 
-def milvus_insert_abstract(pdf_name: str, abstract: str, vector: list[float], flush: bool = True) -> int:
+def milvus_insert_abstract(
+    pdf_name: str, abstract: str, vector: list[float], user_id: int, flush: bool = True
+) -> int:
     """Adds 1 entry to liftup_abstracts.
     Parameters:
     pdf_name (str): The name of the PDF file.
     abstract (str): The abstract of the paper.
     vector (list[float]): The embedding vector for the abstract.
+    user_id (int): Owning user's id — belgeler kullanıcıya özeldir.
     flush (bool): Whether to force an immediate segment flush (see module note on flush cost).
     Returns:
     int: The primary key of the inserted entry."""
     col = get_collection(COL_ABSTRACTS)
     data = [
-        {"pdf_name": pdf_name, "text": abstract, "vector": vector}
+        {"user_id": user_id, "pdf_name": pdf_name, "text": abstract, "vector": vector}
     ]
     res = col.insert(data)
     if flush:
@@ -113,6 +119,7 @@ def milvus_insert_fulltext_chunks(
     pdf_name: str,
     chunks: list[str],
     vectors: list[list[float]],
+    user_id: int,
     flush: bool = True,
 ) -> list[int]:
     """Adds N entries to liftup_fulltext for the given PDF.
@@ -120,6 +127,7 @@ def milvus_insert_fulltext_chunks(
     pdf_name (str): The name of the PDF file.
     chunks (list[str]): The list of full text chunks.
     vectors (list[list[float]]): The list of embedding vectors corresponding to each chunk.
+    user_id (int): Owning user's id — belgeler kullanıcıya özeldir.
     flush (bool): Whether to force an immediate segment flush (see module note on flush cost).
     Returns:
     list[int]: The list of primary keys of the inserted entries.
@@ -129,6 +137,7 @@ def milvus_insert_fulltext_chunks(
     col = get_collection(COL_FULLTEXT)
     data = [
         {
+            "user_id":   user_id,
             "pdf_name":  pdf_name,
             "chunk_idx": i,
             "text":      chunk,
@@ -156,28 +165,30 @@ def milvus_insert_fulltext_chunks(
 # fazla yazma yapan çağıranlar (örn. add_pdf) flush=False geçip işin sonunda
 # tek seferde flush etmelidir.
 
-def _delete_by_pdf_name(collection_name: str, pdf_name: str, flush: bool = True) -> None:
-    """Deletes all entries with the given pdf_name from the specified collection.
+def _delete_by_pdf_name(collection_name: str, pdf_name: str, user_id: int, flush: bool = True) -> None:
+    """Deletes all entries with the given pdf_name AND user_id from the specified collection.
     Parameters:
     collection_name (str): The name of the collection from which to delete entries.
     pdf_name (str): The name of the PDF file whose entries to delete.
+    user_id (int): Sadece bu kullanıcıya ait kayıtlar silinir — iki farklı
+                   kullanıcı aynı pdf_name'e sahip olabilir, biri diğerini silmemeli.
     flush (bool): Whether to force an immediate segment flush.
     Returns:
     None: This function does not return anything."""
     safe = _safe_name(pdf_name)
     col  = get_collection(collection_name)
-    col.delete(expr=f'pdf_name == "{safe}"')
+    col.delete(expr=f'pdf_name == "{safe}" && user_id == {int(user_id)}')
     if flush:
         col.flush()
 
-def milvus_delete_pdf(pdf_name: str, flush: bool = True) -> None:
-    """3 koleksiyondan da siler."""
+def milvus_delete_pdf(pdf_name: str, user_id: int, flush: bool = True) -> None:
+    """3 koleksiyondan da, sadece bu kullanıcıya ait kayıtları siler."""
     for name in [COL_TITLES, COL_ABSTRACTS, COL_FULLTEXT]:
         try:
-            _delete_by_pdf_name(name, pdf_name, flush=flush)
+            _delete_by_pdf_name(name, pdf_name, user_id, flush=flush)
         except Exception as exc:
             # Koleksiyon yoksa/başka bir hata varsa devam et ama sessizce yutma.
-            logger.warning("[Milvus] %s koleksiyonundan silinemedi (%s): %s", name, pdf_name, exc)
+            logger.warning("[Milvus] %s koleksiyonundan silinemedi (%s, user=%s): %s", name, pdf_name, user_id, exc)
 
 # ══════════════════════════════════════════════════════════════════
 # SEARCH
@@ -227,29 +238,6 @@ def milvus_search(
     return hits
 
 # ══════════════════════════════════════════════════════════════════
-# QUERY (exact match)
-# ══════════════════════════════════════════════════════════════════
-
-def milvus_pdf_exists(pdf_name: str) -> bool:
-    """Checks if an entry with the given pdf_name exists in the liftup_titles collection. This is used as a proxy to check if the PDF has been processed, since each PDF should have exactly 1 title entry.
-    Parameters:
-    pdf_name (str): The name of the PDF file to check.
-    Returns:
-    bool: True if an entry with the given pdf_name exists, False otherwise."""
-    try:
-        col = get_collection(COL_TITLES)
-        safe = _safe_name(pdf_name)
-        res = col.query(
-            expr=f'pdf_name == "{safe}"',
-            output_fields=["pdf_name"],
-            limit=1,
-        )
-        return len(res) > 0
-    except Exception:
-        return False
-
-
-# ══════════════════════════════════════════════════════════════════
 # STATS
 # ══════════════════════════════════════════════════════════════════
 
@@ -297,14 +285,16 @@ def milvus_flush(collection_name: str) -> None:
     col.flush()
 
 
-def milvus_get_all_pdf_names() -> set[str]:
+def milvus_get_all_pdf_names() -> set[tuple[int, str]]:
     """
-    3 koleksiyondaki tüm benzersiz pdf_name'leri döner.
-    Reconcile karşılaştırması için kullanılır. Koleksiyon boyutu
-    sayfa boyutunu aşabileceğinden offset/limit ile sayfalanır.
+    3 koleksiyondaki tüm benzersiz (user_id, pdf_name) çiftlerini döner.
+    Reconcile karşılaştırması için kullanılır — pdf_name artık kullanıcılar
+    arasında benzersiz olmadığından sadece isim değil, sahibiyle birlikte
+    karşılaştırılmalıdır. Koleksiyon boyutu sayfa boyutunu aşabileceğinden
+    offset/limit ile sayfalanır.
     """
     ensure_connected()
-    all_names: set[str] = set()
+    all_pairs: set[tuple[int, str]] = set()
 
     for col_name in [COL_TITLES, COL_ABSTRACTS, COL_FULLTEXT]:
         if not utility.has_collection(col_name):
@@ -315,18 +305,19 @@ def milvus_get_all_pdf_names() -> set[str]:
             while True:
                 res = col.query(
                     expr="pdf_name != \"\"",
-                    output_fields=["pdf_name"],
+                    output_fields=["user_id", "pdf_name"],
                     limit=_QUERY_PAGE_SIZE,
                     offset=offset,
                 )
                 for r in res:
-                    name = r.get("pdf_name", "").strip()
-                    if name:
-                        all_names.add(name)
+                    name = (r.get("pdf_name") or "").strip()
+                    uid  = r.get("user_id")
+                    if name and uid is not None:
+                        all_pairs.add((int(uid), name))
                 if len(res) < _QUERY_PAGE_SIZE:
                     break
                 offset += _QUERY_PAGE_SIZE
         except Exception as exc:
             logger.warning("[Milvus] %s sorgulanamadı: %s", col_name, exc)
 
-    return all_names
+    return all_pairs

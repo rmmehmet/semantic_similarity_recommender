@@ -107,16 +107,16 @@ def _normalize_hit(h: Dict, matched_text: str = "") -> Dict:
     }
 
 
-async def _enrich_pg(items: List[Dict]) -> List[Dict]:
+async def _enrich_pg(items: List[Dict], user_id: int) -> List[Dict]:
     """
     N+1 fix: tüm pdf_name'leri tek PG sorgusunda çeker.
-    pg_get_papers_by_names → WHERE pdf_name = ANY($1::text[])
+    pg_get_papers_by_names → WHERE user_id = $1 AND pdf_name = ANY($2::text[])
     """
     if not items:
         return items
 
     pdf_names = [item["pdf_name"] for item in items]
-    papers    = await pg_get_papers_by_names(pdf_names)
+    papers    = await pg_get_papers_by_names(pdf_names, user_id)
 
     for item in items:
         paper = papers.get(item["pdf_name"])
@@ -136,22 +136,25 @@ async def _enrich_pg(items: List[Dict]) -> List[Dict]:
 async def run_title_search(
     query_text: str,
     query_vec:  List[float],
+    user_id:    int,
     top_k:      int = 12,
 ) -> Dict[str, Any]:
     """
     liftup_titles → COSINE → text-mod LLM öneri
+    Sadece bu kullanıcının kendi belgelerine karşı arama yapar.
     """
-    logger.info("[Suggest/title] başladı — top_k=%d", top_k)
+    logger.info("[Suggest/title] başladı — user=%s top_k=%d", user_id, top_k)
 
     raw_hits = await _milvus_search_async(
         collection_name=COL_TITLES,
         query_vector=query_vec,
         top_k=top_k,
         output_fields=TITLE_FIELDS,
+        expr=f"user_id == {int(user_id)}",
     )
 
     results: List[Dict] = [_normalize_hit(h) for h in raw_hits]
-    results = await _enrich_pg(results)
+    results = await _enrich_pg(results, user_id)
 
     loop = asyncio.get_running_loop()
     llm  = await loop.run_in_executor(
@@ -170,18 +173,21 @@ async def run_title_search(
 async def run_abstract_search(
     query_text: str,
     query_vec:  List[float],
+    user_id:    int,
     top_k:      int = 12,
 ) -> Dict[str, Any]:
     """
     liftup_abstracts → COSINE → paper başına tekilleştirme → text-mod LLM
+    Sadece bu kullanıcının kendi belgelerine karşı arama yapar.
     """
-    logger.info("[Suggest/abstract] başladı — top_k=%d", top_k)
+    logger.info("[Suggest/abstract] başladı — user=%s top_k=%d", user_id, top_k)
 
     raw_hits = await _milvus_search_async(
         collection_name=COL_ABSTRACTS,
         query_vector=query_vec,
         top_k=top_k,
         output_fields=ABSTRACT_FIELDS,
+        expr=f"user_id == {int(user_id)}",
     )
 
     # Paper başına en yüksek skoru tut (abstract'ta tek chunk var ama
@@ -195,7 +201,7 @@ async def run_abstract_search(
         seen.add(pdf_name)
         results.append(_normalize_hit(h, matched_text=_snippet(h.get("text", ""))))
 
-    results = await _enrich_pg(results)
+    results = await _enrich_pg(results, user_id)
 
     loop = asyncio.get_running_loop()
     llm  = await loop.run_in_executor(
@@ -214,17 +220,19 @@ async def run_abstract_search(
 async def run_fulltext_search(
     query_text: str,
     query_vec:  List[float],
+    user_id:    int,
     top_k:      int = 12,
     pdf_bytes:  Optional[bytes] = None,
 ) -> Dict[str, Any]:
     """
     liftup_fulltext chunk araması → max-pooling → RAG context → LLM
+    Sadece bu kullanıcının kendi belgelerine karşı arama yapar.
 
     RAG context iki kaynaktan beslenir:
       a) Milvus'tan gelen ham chunk'lar (hızlı, semantik)
       b) PostgreSQL'deki tam chunk kayıtları (zengin, tam metin)
     """
-    logger.info("[Suggest/fulltext] başladı — top_k=%d", top_k)
+    logger.info("[Suggest/fulltext] başladı — user=%s top_k=%d", user_id, top_k)
 
     # ── 1. Chunk araması ──────────────────────────────────────────
     raw_hits = await _milvus_search_async(
@@ -232,6 +240,7 @@ async def run_fulltext_search(
         query_vector=query_vec,
         top_k=top_k * CHUNK_FETCH_MULTIPLIER,
         output_fields=FULLTEXT_FIELDS,
+        expr=f"user_id == {int(user_id)}",
     )
 
     # ── 2. Paper bazında max-pooling ──────────────────────────────
@@ -251,7 +260,7 @@ async def run_fulltext_search(
 
     results.sort(key=lambda x: x["score"], reverse=True)
     results = results[:top_k]
-    results = await _enrich_pg(results)   # tek PG sorgusu — N+1 yok
+    results = await _enrich_pg(results, user_id)   # tek PG sorgusu — N+1 yok
 
     # ── 4. RAG context builder ────────────────────────────────────
 
@@ -268,7 +277,7 @@ async def run_fulltext_search(
     #     Milvus'un göremediği bağlamsal bilgiyi tamamlar
     for r in results[:RAG_PG_TOP_PAPERS]:
         try:
-            paper = await pg_get_paper(r["pdf_name"])
+            paper = await pg_get_paper(r["pdf_name"], user_id)
             if not paper:
                 continue
             pg_chunks = await pg_get_chunks(

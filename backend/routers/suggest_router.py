@@ -32,6 +32,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sentence_transformers import SentenceTransformer
 
 # ── Mevcut servisler (değiştirilmedi) ────────────────────────────
+from services.auth import get_current_user
 from services.text_preprocessing import extract_full_text_from_pdf
 from services.upload_validation import validate_pdf_bytes
 from services.rate_limit import rate_limit
@@ -83,6 +84,7 @@ async def suggest_search(
     query_text:  str                    = Form(""),
     top_k:       int                    = Form(12),
     file:        Optional[UploadFile]   = File(None),  # fulltext modunda PDF
+    current_user: dict                  = Depends(get_current_user),
 ):
     """
     Tek endpoint — search_type'a göre ilgili pipeline'ı çağırır.
@@ -128,6 +130,7 @@ async def suggest_search(
     }
     """
     t0 = time.time()
+    user_id = int(current_user["sub"])
 
     # ── Doğrulama ────────────────────────────────────────────────
     if search_type not in ("title", "abstract", "fulltext"):
@@ -172,18 +175,21 @@ async def suggest_search(
             result = await run_title_search(
                 query_text=embed_text,
                 query_vec=query_vec,
+                user_id=user_id,
                 top_k=top_k,
             )
         elif search_type == "abstract":
             result = await run_abstract_search(
                 query_text=embed_text,
                 query_vec=query_vec,
+                user_id=user_id,
                 top_k=top_k,
             )
         else:  # fulltext
             result = await run_fulltext_search(
                 query_text=embed_text,
                 query_vec=query_vec,
+                user_id=user_id,
                 top_k=top_k,
                 pdf_bytes=pdf_bytes,
             )

@@ -41,6 +41,7 @@ def create_all_collections() -> None:
         name="liftup_titles",
         fields=[
             FieldSchema("id",       DataType.INT64,       is_primary=True, auto_id=True),
+            FieldSchema("user_id",  DataType.INT64),
             FieldSchema("pdf_name", DataType.VARCHAR,      max_length=512),
             FieldSchema("text",     DataType.VARCHAR,      max_length=1024),
             FieldSchema("vector",   DataType.FLOAT_VECTOR, dim=DIM),
@@ -54,6 +55,7 @@ def create_all_collections() -> None:
         name="liftup_abstracts",
         fields=[
             FieldSchema("id",       DataType.INT64,       is_primary=True, auto_id=True),
+            FieldSchema("user_id",  DataType.INT64),
             FieldSchema("pdf_name", DataType.VARCHAR,      max_length=512),
             FieldSchema("text",     DataType.VARCHAR,      max_length=4096),
             FieldSchema("vector",   DataType.FLOAT_VECTOR, dim=DIM),
@@ -67,6 +69,7 @@ def create_all_collections() -> None:
         name="liftup_fulltext",
         fields=[
             FieldSchema("id",        DataType.INT64,       is_primary=True, auto_id=True),
+            FieldSchema("user_id",   DataType.INT64),
             FieldSchema("pdf_name",  DataType.VARCHAR,      max_length=512),
             FieldSchema("chunk_idx", DataType.INT32),
             FieldSchema("text",      DataType.VARCHAR,      max_length=2048),
@@ -83,11 +86,27 @@ def _ensure_collection(
     fields: list[FieldSchema],
     desc: str,
 ) -> Collection:
+    expected_field_names = {f.name for f in fields}
+
     if utility.has_collection(name):
-        logger.info("%s: zaten var, yükleniyor.", name)
-        col = Collection(name)
-        col.load()
-        return col
+        existing = Collection(name)
+        existing_field_names = {f.name for f in existing.schema.fields}
+        if existing_field_names == expected_field_names:
+            logger.info("%s: zaten var, yükleniyor.", name)
+            existing.load()
+            return existing
+
+        # Şema değişmiş (örn. user_id alanı eklendi) — eski koleksiyon yeni
+        # şemayla uyumsuz. Önceki veri kullanıcıya özel alan ayrımı olmadan
+        # kaydedildiği için güvenle taşınamaz; koleksiyon düşürülüp yeni
+        # şemayla yeniden oluşturulur (Postgres tarafında da karşılık gelen
+        # eski test kayıtları migration'da zaten temizlendi).
+        logger.warning(
+            "%s: şema değişmiş (eski alanlar=%s, yeni alanlar=%s) — "
+            "koleksiyon düşürülüp yeniden oluşturuluyor.",
+            name, sorted(existing_field_names), sorted(expected_field_names),
+        )
+        existing.drop()
 
     schema = CollectionSchema(fields=fields, description=desc)
     col    = Collection(name=name, schema=schema)

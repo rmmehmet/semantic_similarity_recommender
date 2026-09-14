@@ -52,6 +52,7 @@ async def pg_upsert_paper(
     raw_title: str,
     abstract: str,
     fulltext: str,
+    user_id: int,
     book_name: str = "",
     year: int = 0,
     content_hash: Optional[str] = None,
@@ -59,15 +60,16 @@ async def pg_upsert_paper(
     """
     INSERT OR UPDATE — milvus_synced FALSE olarak başlar.
     Milvus yazımı tamamlandıktan sonra pg_mark_synced() çağrılmalıdır.
+    Belgeler kullanıcıya özeldir: benzersizlik (user_id, pdf_name) çiftine göredir.
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
             INSERT INTO papers
-                (pdf_name, raw_title, abstract, fulltext, book_name, year, content_hash, milvus_synced)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
-            ON CONFLICT (pdf_name) DO UPDATE
+                (pdf_name, raw_title, abstract, fulltext, book_name, year, content_hash, user_id, milvus_synced)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, FALSE)
+            ON CONFLICT (user_id, pdf_name) DO UPDATE
                 SET raw_title     = EXCLUDED.raw_title,
                     abstract      = EXCLUDED.abstract,
                     fulltext      = EXCLUDED.fulltext,
@@ -78,25 +80,27 @@ async def pg_upsert_paper(
                     updated_at    = NOW()
             RETURNING id
             """,
-            pdf_name, raw_title, abstract, fulltext, book_name, year, content_hash,
+            pdf_name, raw_title, abstract, fulltext, book_name, year, content_hash, user_id,
         )
         return int(row["id"])
 
 
-async def pg_get_paper_by_hash(content_hash: str) -> Optional[dict]:
+async def pg_get_paper_by_hash(content_hash: str, user_id: int) -> Optional[dict]:
     """
-    İçerik hash'i ile eşleşen kaydı döner (dosya adından bağımsız).
-    Aynı belgenin farklı bir isimle yeniden yüklenmesini tespit etmek için kullanılır.
+    Bu kullanıcının belgeleri içinde içerik hash'i ile eşleşen kaydı döner
+    (dosya adından bağımsız). Aynı belgenin farklı bir isimle yeniden
+    yüklenmesini tespit etmek için kullanılır — kullanıcının KENDİ alanıyla sınırlıdır.
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT * FROM papers WHERE content_hash = $1", content_hash
+            "SELECT * FROM papers WHERE content_hash = $1 AND user_id = $2",
+            content_hash, user_id,
         )
         return dict(row) if row else None
 
 
-async def pg_mark_synced(pdf_name: str) -> None:
+async def pg_mark_synced(pdf_name: str, user_id: int) -> None:
     """
     Milvus yazımı başarıyla tamamlandığında çağrılır.
     milvus_synced = TRUE yapar.
@@ -104,22 +108,22 @@ async def pg_mark_synced(pdf_name: str) -> None:
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
-            "UPDATE papers SET milvus_synced = TRUE, updated_at = NOW() WHERE pdf_name = $1",
-            pdf_name,
+            "UPDATE papers SET milvus_synced = TRUE, updated_at = NOW() WHERE pdf_name = $1 AND user_id = $2",
+            pdf_name, user_id,
         )
-    logger.info("[PG] milvus_synced=TRUE — %s", pdf_name)
+    logger.info("[PG] milvus_synced=TRUE — %s (user=%s)", pdf_name, user_id)
 
 
 async def pg_get_unsynced() -> list[dict]:
     """
-    milvus_synced=FALSE olan tüm kayıtları döner.
-    Reconcile işlemi bu listeyi kullanır.
+    milvus_synced=FALSE olan tüm kayıtları (TÜM kullanıcılar dahil) döner.
+    Reconcile işlemi (admin-only, global bakım) bu listeyi kullanır.
     """
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, pdf_name, raw_title, book_name, year, created_at
+            SELECT id, pdf_name, raw_title, book_name, year, user_id, created_at
             FROM   papers
             WHERE  milvus_synced = FALSE
             ORDER  BY created_at DESC
@@ -128,18 +132,19 @@ async def pg_get_unsynced() -> list[dict]:
         return [dict(r) for r in rows]
 
 
-async def pg_get_paper(pdf_name: str) -> Optional[dict]:
+async def pg_get_paper(pdf_name: str, user_id: int) -> Optional[dict]:
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT * FROM papers WHERE pdf_name = $1", pdf_name
+            "SELECT * FROM papers WHERE pdf_name = $1 AND user_id = $2", pdf_name, user_id
         )
         return dict(row) if row else None
 
 
-async def pg_get_papers_by_names(pdf_names: list[str]) -> dict[str, dict]:
+async def pg_get_papers_by_names(pdf_names: list[str], user_id: int) -> dict[str, dict]:
     """
     N+1 sorununu çözer — tek sorguda birden fazla paper getirir.
+    Sadece bu kullanıcının belgeleriyle sınırlıdır.
     Dönen dict: { pdf_name → paper_dict }
     """
     if not pdf_names:
@@ -150,14 +155,15 @@ async def pg_get_papers_by_names(pdf_names: list[str]) -> dict[str, dict]:
             """
             SELECT id, pdf_name, raw_title, book_name, year
             FROM   papers
-            WHERE  pdf_name = ANY($1::text[])
+            WHERE  user_id = $1 AND pdf_name = ANY($2::text[])
             """,
-            pdf_names,
+            user_id, pdf_names,
         )
         return {r["pdf_name"]: dict(r) for r in rows}
 
 
-async def pg_list_papers(limit: int = 500) -> list[dict]:
+async def pg_list_papers(limit: int, user_id: int) -> list[dict]:
+    """Sadece bu kullanıcının belgelerini listeler."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -173,10 +179,11 @@ async def pg_list_papers(limit: int = 500) -> list[dict]:
                 COALESCE(char_length(abstract), 0)::int AS abstract_len,
                 COALESCE(char_length(fulltext),  0)::int AS fulltext_len
             FROM papers
+            WHERE user_id = $1
             ORDER BY created_at DESC
-            LIMIT $1
+            LIMIT $2
             """,
-            limit,
+            user_id, limit,
         )
         result = []
         for r in rows:
@@ -187,30 +194,31 @@ async def pg_list_papers(limit: int = 500) -> list[dict]:
         return result
 
 
-async def pg_delete_paper(pdf_name: str) -> bool:
+async def pg_delete_paper(pdf_name: str, user_id: int) -> bool:
+    """Sadece bu kullanıcıya ait kaydı siler."""
     pool = await get_pool()
     async with pool.acquire() as conn:
         result = await conn.execute(
-            "DELETE FROM papers WHERE pdf_name = $1", pdf_name
+            "DELETE FROM papers WHERE pdf_name = $1 AND user_id = $2", pdf_name, user_id
         )
         return result.split()[-1] != "0"
 
 
-async def pg_paper_exists(pdf_name: str) -> bool:
+async def pg_paper_exists(pdf_name: str, user_id: int) -> bool:
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT 1 FROM papers WHERE pdf_name = $1", pdf_name
+            "SELECT 1 FROM papers WHERE pdf_name = $1 AND user_id = $2", pdf_name, user_id
         )
         return row is not None
 
 
-async def pg_get_all_pdf_names() -> set[str]:
-    """Reconcile için PG'deki tüm pdf_name setini döner."""
+async def pg_get_all_pdf_names() -> set[tuple[int, str]]:
+    """Reconcile için PG'deki tüm (user_id, pdf_name) çiftlerini döner."""
     pool = await get_pool()
     async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT pdf_name FROM papers")
-        return {r["pdf_name"] for r in rows}
+        rows = await conn.fetch("SELECT user_id, pdf_name FROM papers")
+        return {(r["user_id"], r["pdf_name"]) for r in rows}
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -262,11 +270,11 @@ async def pg_get_chunks(
 # DETAIL
 # ══════════════════════════════════════════════════════════════════
 
-async def pg_get_detail(pdf_name: str) -> Optional[dict]:
+async def pg_get_detail(pdf_name: str, user_id: int) -> Optional[dict]:
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT * FROM papers WHERE pdf_name = $1", pdf_name
+            "SELECT * FROM papers WHERE pdf_name = $1 AND user_id = $2", pdf_name, user_id
         )
         if not row:
             return None
@@ -294,19 +302,25 @@ async def pg_get_detail(pdf_name: str) -> Optional[dict]:
 # STATS
 # ══════════════════════════════════════════════════════════════════
 
-async def pg_stats() -> dict:
+async def pg_stats(user_id: int) -> dict:
+    """Sadece bu kullanıcının belgelerine ait istatistikler."""
     pool = await get_pool()
     async with pool.acquire() as conn:
-        paper_count   = await conn.fetchval("SELECT COUNT(*) FROM papers")
+        paper_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM papers WHERE user_id = $1", user_id
+        )
         unsynced_count = await conn.fetchval(
-            "SELECT COUNT(*) FROM papers WHERE milvus_synced = FALSE"
+            "SELECT COUNT(*) FROM papers WHERE milvus_synced = FALSE AND user_id = $1", user_id
         )
         chunk_rows = await conn.fetch(
             """
-            SELECT chunk_type, COUNT(*) AS cnt
-            FROM   chunks
-            GROUP  BY chunk_type
-            """
+            SELECT c.chunk_type, COUNT(*) AS cnt
+            FROM   chunks c
+            JOIN   papers p ON p.id = c.paper_id
+            WHERE  p.user_id = $1
+            GROUP  BY c.chunk_type
+            """,
+            user_id,
         )
     return {
         "unique_pdf_count":  int(paper_count),
