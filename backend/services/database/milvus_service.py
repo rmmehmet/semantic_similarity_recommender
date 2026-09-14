@@ -47,6 +47,9 @@ def _safe_name(pdf_name: str) -> str:
     return pdf_name.replace('"', "").replace("'", "").replace("\\", "")
 
 
+_loaded_collections: set[str] = set()
+
+
 def get_collection(name: str) -> Collection:
     """Get a Milvus collection by name, ensuring it's loaded. Raises an error if the collection doesn't exist.
     Parameters:
@@ -55,22 +58,28 @@ def get_collection(name: str) -> Collection:
     Collection: The Milvus collection object."""
     ensure_connected()
     col = Collection(name)
-    # Calling load() again if it's already loaded creates unnecessary overhead
-    load_state = utility.load_state(name)
-    if str(load_state) != "Loaded":
-        col.load()
+    # utility.load_state() is a network round-trip to the Milvus server on every
+    # call. Once we've confirmed a collection is loaded in this process, skip the
+    # check entirely — this shaves an RPC off every single insert/delete/search
+    # (PDF uploads alone were doing 6+ of these calls per request).
+    if name not in _loaded_collections:
+        load_state = utility.load_state(name)
+        if str(load_state) != "Loaded":
+            col.load()
+        _loaded_collections.add(name)
     return col
 
 # ══════════════════════════════════════════════════════════════════
 # INSERT
 # ══════════════════════════════════════════════════════════════════
 
-def milvus_insert_title(pdf_name: str, title: str, vector: list[float]) -> int:
+def milvus_insert_title(pdf_name: str, title: str, vector: list[float], flush: bool = True) -> int:
     """Adds 1 entry to liftup_titles.
     Parameters:
     pdf_name (str): The name of the PDF file.
     title (str): The title of the paper.
     vector (list[float]): The embedding vector for the title.
+    flush (bool): Whether to force an immediate segment flush (see module note on flush cost).
     Returns:
     int: The primary key of the inserted entry."""
     col = get_collection(COL_TITLES)
@@ -78,15 +87,17 @@ def milvus_insert_title(pdf_name: str, title: str, vector: list[float]) -> int:
         {"pdf_name": pdf_name, "text": title, "vector": vector}
     ]
     res = col.insert(data)
-    col.flush()
+    if flush:
+        col.flush()
     return int(res.primary_keys[0])
 
-def milvus_insert_abstract(pdf_name: str, abstract: str, vector: list[float]) -> int:
+def milvus_insert_abstract(pdf_name: str, abstract: str, vector: list[float], flush: bool = True) -> int:
     """Adds 1 entry to liftup_abstracts.
     Parameters:
     pdf_name (str): The name of the PDF file.
     abstract (str): The abstract of the paper.
     vector (list[float]): The embedding vector for the abstract.
+    flush (bool): Whether to force an immediate segment flush (see module note on flush cost).
     Returns:
     int: The primary key of the inserted entry."""
     col = get_collection(COL_ABSTRACTS)
@@ -94,19 +105,22 @@ def milvus_insert_abstract(pdf_name: str, abstract: str, vector: list[float]) ->
         {"pdf_name": pdf_name, "text": abstract, "vector": vector}
     ]
     res = col.insert(data)
-    col.flush()
+    if flush:
+        col.flush()
     return int(res.primary_keys[0])
 
 def milvus_insert_fulltext_chunks(
     pdf_name: str,
     chunks: list[str],
     vectors: list[list[float]],
+    flush: bool = True,
 ) -> list[int]:
     """Adds N entries to liftup_fulltext for the given PDF.
     Parameters:
     pdf_name (str): The name of the PDF file.
     chunks (list[str]): The list of full text chunks.
     vectors (list[list[float]]): The list of embedding vectors corresponding to each chunk.
+    flush (bool): Whether to force an immediate segment flush (see module note on flush cost).
     Returns:
     list[int]: The list of primary keys of the inserted entries.
     """
@@ -123,30 +137,44 @@ def milvus_insert_fulltext_chunks(
         for i, chunk in enumerate(chunks)
     ]
     res = col.insert(data)
-    col.flush()
+    if flush:
+        col.flush()
     return [int(pk) for pk in res.primary_keys]
 
 # ══════════════════════════════════════════════════════════════════
 # DELETE
 # ══════════════════════════════════════════════════════════════════
 
-def _delete_by_pdf_name(collection_name: str, pdf_name: str) -> None:
+# NOT (performans): Collection.flush() bir arka plan segment-persist işlemini
+# TAMAMLANANA kadar bekleyen, pahalı ve senkron bir Milvus RPC'sidir. Her
+# insert/delete sonrası ayrı ayrı çağrılırsa (eskiden bir PDF yüklemesi başına
+# 6 kez çağrılıyordu: 3 silme + 3 ekleme) yükleme süresi ciddi şekilde artar.
+# Milvus'taki büyüyen (growing) segmentler flush edilmeden de arama için
+# görünürdür — flush veriyi kalıcı hale getirir ama arama görünürlüğü için
+# şart değildir. Bu yüzden varsayılan olarak flush=True bırakılır (silme/kaldırma
+# gibi TEK BAŞINA yapılan işlemler için durabilite istenir) ama art arda birden
+# fazla yazma yapan çağıranlar (örn. add_pdf) flush=False geçip işin sonunda
+# tek seferde flush etmelidir.
+
+def _delete_by_pdf_name(collection_name: str, pdf_name: str, flush: bool = True) -> None:
     """Deletes all entries with the given pdf_name from the specified collection.
     Parameters:
     collection_name (str): The name of the collection from which to delete entries.
     pdf_name (str): The name of the PDF file whose entries to delete.
+    flush (bool): Whether to force an immediate segment flush.
     Returns:
     None: This function does not return anything."""
     safe = _safe_name(pdf_name)
     col  = get_collection(collection_name)
     col.delete(expr=f'pdf_name == "{safe}"')
-    col.flush()
+    if flush:
+        col.flush()
 
-def milvus_delete_pdf(pdf_name: str) -> None:
+def milvus_delete_pdf(pdf_name: str, flush: bool = True) -> None:
     """3 koleksiyondan da siler."""
     for name in [COL_TITLES, COL_ABSTRACTS, COL_FULLTEXT]:
         try:
-            _delete_by_pdf_name(name, pdf_name)
+            _delete_by_pdf_name(name, pdf_name, flush=flush)
         except Exception as exc:
             # Koleksiyon yoksa/başka bir hata varsa devam et ama sessizce yutma.
             logger.warning("[Milvus] %s koleksiyonundan silinemedi (%s): %s", name, pdf_name, exc)
@@ -259,6 +287,14 @@ def milvus_drop_all() -> None:
 # ══════════════════════════════════════════════════════════════════
 
 _QUERY_PAGE_SIZE = 4096
+
+
+def milvus_flush(collection_name: str) -> None:
+    """Tek bir koleksiyonu flush eder. Birden fazla koleksiyonu paralel flush
+    etmek isteyen çağıranlar bu fonksiyonu ayrı thread'lerden çağırabilir —
+    bkz. database_router.add_pdf."""
+    col = get_collection(collection_name)
+    col.flush()
 
 
 def milvus_get_all_pdf_names() -> set[str]:

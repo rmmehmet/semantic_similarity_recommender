@@ -36,6 +36,7 @@ from services.database.postgres_service import (
 from services.database.milvus_service import (
     milvus_delete_pdf,
     milvus_drop_all,
+    milvus_flush,
     milvus_get_all_pdf_names,
     milvus_insert_abstract,
     milvus_insert_fulltext_chunks,
@@ -99,7 +100,8 @@ async def add_pdf(
     disk_path = PDF_STORAGE_DIR / Path(pdf_name).name
     disk_path.write_bytes(pdf_bytes)
 
-    if not force_update and await pg_paper_exists(pdf_name):
+    existed = await pg_paper_exists(pdf_name)
+    if not force_update and existed:
         return {"status": "skipped", "pdf_name": pdf_name, "reason": "already_exists"}
 
     title    = extract_title_from_pdf(pdf_bytes)    or ""
@@ -131,15 +133,36 @@ async def add_pdf(
     ft_vecs      = all_vecs[abs_end:]
 
     # Milvus yazımı — hata olursa milvus_synced FALSE kalır, loglanır
+    #
+    # Performans notu: col.flush() pahalı, senkron bir Milvus RPC'sidir.
+    # Eskiden bu blok PDF başına 6 kez flush çağırıyordu (3 silme + 3 ekleme),
+    # bunların hepsi sırayla bekleniyordu — yükleme süresini ciddi şekilde
+    # şişiriyordu. Artık:
+    #   1) Silme sadece gerçekten var olan bir kayıt güncelleniyorsa yapılır
+    #      (yeni PDF'lerde gereksiz 3 silme+flush RPC'si tamamen atlanır).
+    #   2) 3 insert paralel çalışır (ayrı koleksiyonlar, birbirini bloklamaz).
+    #   3) flush tek seferde, sonunda ve paralel yapılır.
     try:
-        await _run_blocking(milvus_delete_pdf, pdf_name)
-        await _run_blocking(milvus_insert_title, pdf_name, title, title_vec)
-        await _run_blocking(
-            milvus_insert_abstract,
-            pdf_name, abs_chunks[0] if abs_chunks else abstract, abstract_vec,
-        )
+        if existed:
+            await _run_blocking(milvus_delete_pdf, pdf_name, False)  # flush=False
+
+        insert_tasks = [
+            _run_blocking(milvus_insert_title, pdf_name, title, title_vec, False),
+            _run_blocking(
+                milvus_insert_abstract,
+                pdf_name, abs_chunks[0] if abs_chunks else abstract, abstract_vec, False,
+            ),
+        ]
         if ft_chunks and ft_vecs:
-            await _run_blocking(milvus_insert_fulltext_chunks, pdf_name, ft_chunks, ft_vecs)
+            insert_tasks.append(
+                _run_blocking(milvus_insert_fulltext_chunks, pdf_name, ft_chunks, ft_vecs, False)
+            )
+        await asyncio.gather(*insert_tasks)
+
+        flush_targets = [COL_TITLES, COL_ABSTRACTS]
+        if ft_chunks and ft_vecs:
+            flush_targets.append(COL_FULLTEXT)
+        await asyncio.gather(*(_run_blocking(milvus_flush, name) for name in flush_targets))
 
         # Başarılıysa senkronize olarak işaretle
         await pg_mark_synced(pdf_name)
@@ -331,16 +354,28 @@ async def reconcile_database():
             abstract_vec = all_vecs[abs_start] if abs_chunks else all_vecs[0]
             ft_vecs      = all_vecs[abs_end:]
 
-            await _run_blocking(milvus_delete_pdf, pdf_name)
-            await _run_blocking(milvus_insert_title, pdf_name, title, title_vec)
-            await _run_blocking(
-                milvus_insert_abstract,
-                pdf_name,
-                abs_chunks[0] if abs_chunks else abstract,
-                abstract_vec,
-            )
+            # Bu kayıt milvus_synced=FALSE olduğu için Milvus'ta eksik/yarım
+            # veri olabilir — silme burada gerçekten gerekli. Ama yine de
+            # flush'ı erteleyip sonda paralel yapıyoruz (bkz. add_pdf).
+            await _run_blocking(milvus_delete_pdf, pdf_name, False)
+
+            insert_tasks = [
+                _run_blocking(milvus_insert_title, pdf_name, title, title_vec, False),
+                _run_blocking(
+                    milvus_insert_abstract,
+                    pdf_name, abs_chunks[0] if abs_chunks else abstract, abstract_vec, False,
+                ),
+            ]
             if ft_chunks and ft_vecs:
-                await _run_blocking(milvus_insert_fulltext_chunks, pdf_name, ft_chunks, ft_vecs)
+                insert_tasks.append(
+                    _run_blocking(milvus_insert_fulltext_chunks, pdf_name, ft_chunks, ft_vecs, False)
+                )
+            await asyncio.gather(*insert_tasks)
+
+            flush_targets = [COL_TITLES, COL_ABSTRACTS]
+            if ft_chunks and ft_vecs:
+                flush_targets.append(COL_FULLTEXT)
+            await asyncio.gather(*(_run_blocking(milvus_flush, name) for name in flush_targets))
 
             await pg_mark_synced(pdf_name)
             result["fixed_unsynced"].append(pdf_name)

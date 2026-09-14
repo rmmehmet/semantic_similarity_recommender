@@ -16,6 +16,13 @@ import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Router/servis modülleri import edilirken os.getenv() ile okunan tüm
+# ayarlar (services/config.py) doğru değerleri görsün diye .env dosyası
+# HERHANGİ bir proje modülü import edilmeden ÖNCE yüklenmelidir.
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
