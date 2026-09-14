@@ -50,6 +50,7 @@
 .db-nav__logo {
   display: flex; align-items: center; gap: 8px;
   cursor: pointer; user-select: none;
+  border: none; background: none; font-family: inherit; padding: 0;
 }
 .db-logo-hex {
   width: 28px; height: 28px;

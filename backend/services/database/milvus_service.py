@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from pymilvus import (
     Collection,
@@ -144,8 +147,9 @@ def milvus_delete_pdf(pdf_name: str) -> None:
     for name in [COL_TITLES, COL_ABSTRACTS, COL_FULLTEXT]:
         try:
             _delete_by_pdf_name(name, pdf_name)
-        except Exception:
-            pass  # if collection doesn't exist or other error, ignore
+        except Exception as exc:
+            # Koleksiyon yoksa/başka bir hata varsa devam et ama sessizce yutma.
+            logger.warning("[Milvus] %s koleksiyonundan silinemedi (%s): %s", name, pdf_name, exc)
 
 # ══════════════════════════════════════════════════════════════════
 # SEARCH
@@ -254,12 +258,14 @@ def milvus_drop_all() -> None:
 # RECONCILE YARDIMCISI
 # ══════════════════════════════════════════════════════════════════
 
+_QUERY_PAGE_SIZE = 4096
+
+
 def milvus_get_all_pdf_names() -> set[str]:
     """
     3 koleksiyondaki tüm benzersiz pdf_name'leri döner.
-    Reconcile karşılaştırması için kullanılır.
-    Büyük koleksiyonlarda sayfalı sorgu gerekebilir;
-    şimdilik limit=16384 yeterli.
+    Reconcile karşılaştırması için kullanılır. Koleksiyon boyutu
+    sayfa boyutunu aşabileceğinden offset/limit ile sayfalanır.
     """
     ensure_connected()
     all_names: set[str] = set()
@@ -269,19 +275,22 @@ def milvus_get_all_pdf_names() -> set[str]:
             continue
         try:
             col = get_collection(col_name)
-            res = col.query(
-                expr="pdf_name != \"\"",
-                output_fields=["pdf_name"],
-                limit=16384,
-            )
-            for r in res:
-                name = r.get("pdf_name", "").strip()
-                if name:
-                    all_names.add(name)
+            offset = 0
+            while True:
+                res = col.query(
+                    expr="pdf_name != \"\"",
+                    output_fields=["pdf_name"],
+                    limit=_QUERY_PAGE_SIZE,
+                    offset=offset,
+                )
+                for r in res:
+                    name = r.get("pdf_name", "").strip()
+                    if name:
+                        all_names.add(name)
+                if len(res) < _QUERY_PAGE_SIZE:
+                    break
+                offset += _QUERY_PAGE_SIZE
         except Exception as exc:
-            import logging
-            logging.getLogger(__name__).warning(
-                "[Milvus] %s sorgulanamadı: %s", col_name, exc
-            )
+            logger.warning("[Milvus] %s sorgulanamadı: %s", col_name, exc)
 
     return all_names

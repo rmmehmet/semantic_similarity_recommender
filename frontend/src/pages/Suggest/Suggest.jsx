@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { suggestSearch } from "../../../services/service.js";
+import { suggestSearch, validatePdfFile } from "../../../services/service.js";
 import "./Suggest.css";
 
 // ── Sabitler ───────────────────────────────────────────────────────
@@ -49,10 +49,10 @@ function Navbar() {
   const [open, setOpen] = useState(false);
   return (
     <nav className="sug-nav">
-      <div className="sug-nav__logo" onClick={() => navigate("/")}>
+      <button className="sug-nav__logo" onClick={() => navigate("/")} aria-label="Ana sayfaya git">
         <span className="sug-logo-hex">A</span>
         <span className="sug-nav__brand">Altay<em>AI</em></span>
-      </div>
+      </button>
       <ul className={`sug-nav__links${open ? " open" : ""}`}>
         {[["PDF Bölme","/split"],["Benzerlik Arama","/search"],["Proje Öneri","/suggest"],["Veritabanı","/database"]].map(([l,p]) => (
           <li key={p}>
@@ -69,10 +69,15 @@ function Navbar() {
 }
 
 // ── PDF Drop Zone ──────────────────────────────────────────────────
-function PdfDrop({ file, onFile }) {
+function PdfDrop({ file, onFile, onError }) {
   const [drag, setDrag] = useState(false);
   const ref = useRef(null);
-  const handle = f => { if (f?.type === "application/pdf") onFile(f); };
+  const handle = f => {
+    if (!f) return;
+    const err = validatePdfFile(f);
+    if (err) { onError?.(err); return; }
+    onFile(f);
+  };
   return (
     <div className={`sug-pdf-drop${drag?" drag":""}${file?" filled":""}`}
       onDragOver={e=>{e.preventDefault();setDrag(true)}}
@@ -726,7 +731,7 @@ export default function Suggest() {
             {mode==="fulltext" && (
               <>
                 <div className="sug-or-divider"><span>veya</span></div>
-                <PdfDrop file={pdfFile} onFile={setPdfFile}/>
+                <PdfDrop file={pdfFile} onFile={setPdfFile} onError={setError}/>
               </>
             )}
           </div>

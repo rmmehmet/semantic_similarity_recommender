@@ -26,11 +26,16 @@ Dönen sözlük Suggest.jsx LLMPanel bileşeniyle birebir uyumludur:
 """
 
 import json
+import logging
 import urllib.request
 import urllib.error
 from typing import List, Dict, Any
 
-OLLAMA_BASE_URL = "http://127.0.0.1:11434"
+from services.config import OLLAMA_URL
+
+logger = logging.getLogger(__name__)
+
+OLLAMA_BASE_URL = OLLAMA_URL
 OLLAMA_MODEL    = "llama3.1:8b-instruct-q4_K_M"
 
 
@@ -112,10 +117,10 @@ def generate_topic_suggestion(
     system, user = _build_suggest_messages(input_text, search_type, high)
 
     try:
-        print(f"[LLM] Ollama çağrılıyor (text modu) — {OLLAMA_MODEL}")
+        logger.info("[LLM] Ollama çağrılıyor (text modu) — %s", OLLAMA_MODEL)
         raw    = _call_ollama(system, user)
         parsed = _parse_json(raw)
-        print("[LLM] ✓ Text yanıtı alındı")
+        logger.info("[LLM] Text yanıtı alındı")
         return {
             "success":          True,
             "mode":             "text",
@@ -163,10 +168,10 @@ def generate_rag_analysis(
     system, user = _build_rag_messages(pdf_full_text, pdf_title, high)
 
     try:
-        print(f"[LLM] Ollama çağrılıyor (RAG modu) — {OLLAMA_MODEL}")
+        logger.info("[LLM] Ollama çağrılıyor (RAG modu) — %s", OLLAMA_MODEL)
         raw    = _call_ollama(system, user)
         parsed = _parse_json(raw)
-        print("[LLM] ✓ RAG yanıtı alındı")
+        logger.info("[LLM] RAG yanıtı alındı")
         return {
             "success":                 True,
             "mode":                    "rag",

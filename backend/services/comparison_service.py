@@ -1,4 +1,12 @@
+import asyncio
+import logging
+from functools import partial
+
 from fastapi import HTTPException
+
+from services.upload_validation import validate_pdf_bytes
+
+logger = logging.getLogger(__name__)
 
 THRESHOLDS = {
     "bert":        0.80,
@@ -37,15 +45,23 @@ def _combined(results: dict, docs: list) -> list:
     names = [d["name"] for d in docs]
     out = []
     for name in names:
-        algo_scores = {
-            algo: round(next((s["score"] for s in scores if s["name"] == name), 0.0), 4)
-            for algo, scores in results.items()
-        }
+        # Sadece başarıyla çalışan (sonuç üretmiş) algoritmalar ortalamaya dahil edilir;
+        # aksi halde hatalı bir algoritma sessizce 0.0 gibi davranıp ortalamayı düşürürdü.
+        algo_scores = {}
+        failed_algos = []
+        for algo, scores in results.items():
+            match = next((s["score"] for s in scores if s["name"] == name), None)
+            if match is None:
+                failed_algos.append(algo)
+            else:
+                algo_scores[algo] = round(match, 4)
+
         avg = sum(algo_scores.values()) / len(algo_scores) if algo_scores else 0
         out.append({
             "name":          name,
             "average_score": round(avg, 4),
             "algo_scores":   algo_scores,
+            "failed_algos":  failed_algos,
         })
     return sorted(out, key=lambda x: x["average_score"], reverse=True)
 
@@ -85,14 +101,17 @@ def _load_prep():
 async def run_compare(target_file, compare_files, search_type: str) -> dict:
     eftp, eafp, etfp, pt = _load_prep()
     algos = _load_algos()
+    loop = asyncio.get_running_loop()
 
-    target_bytes   = await target_file.read()
+    target_bytes = await target_file.read()
+    validate_pdf_bytes(target_bytes, target_file.filename)
     target_content = _pick(target_bytes, search_type, eftp, eafp, etfp, pt)
 
-    docs = [
-        {"name": f.filename, "content": _pick(await f.read(), search_type, eftp, eafp, etfp, pt)}
-        for f in compare_files
-    ]
+    docs = []
+    for f in compare_files:
+        data = await f.read()
+        validate_pdf_bytes(data, f.filename)
+        docs.append({"name": f.filename, "content": _pick(data, search_type, eftp, eafp, etfp, pt)})
 
     if not docs:
         raise HTTPException(400, "No documents to compare.")
@@ -100,11 +119,12 @@ async def run_compare(target_file, compare_files, search_type: str) -> dict:
     results = {}
     for name, fn in algos.items():
         try:
-            scores = fn(target_content, docs)
+            # BERT/TF-IDF gibi CPU-ağır algoritmalar event loop'u bloklamasın.
+            scores = await loop.run_in_executor(None, partial(fn, target_content, docs))
             results[name] = [{"name": s["name"], "score": float(s["score"])} for s in scores[:10]]
         except Exception as e:
             results[name] = []
-            print(f"[{name}] hata: {e}")
+            logger.error("[Compare] %s algoritması hata verdi: %s", name, e)
 
     return {
         "success":     True,

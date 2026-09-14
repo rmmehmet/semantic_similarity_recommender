@@ -21,15 +21,21 @@ main.py'ye eklemek için:
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from functools import partial
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+import logging
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sentence_transformers import SentenceTransformer
 
 # ── Mevcut servisler (değiştirilmedi) ────────────────────────────
 from services.text_preprocessing import extract_full_text_from_pdf
+from services.upload_validation import validate_pdf_bytes
+from services.rate_limit import rate_limit
+from services.config import OLLAMA_URL
 
 # ── Öneri servisi ─────────────────────────────────────────────────
 from services.suggest_service import (
@@ -38,16 +44,21 @@ from services.suggest_service import (
     run_fulltext_search,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["Suggest"])
 
 # ── Embedding modeli (database_router ile aynı singleton pattern) ─
 _model: Optional[SentenceTransformer] = None
+_model_lock = threading.Lock()
 
 
 def _get_model() -> SentenceTransformer:
     global _model
     if _model is None:
-        _model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+        with _model_lock:
+            if _model is None:
+                _model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
     return _model
 
 
@@ -56,7 +67,7 @@ async def _embed_async(text: str) -> list[float]:
     Embedding CPU-bound — database_router ile aynı run_in_executor pattern.
     FastAPI event-loop bloklanmaz.
     """
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     fn   = partial(_get_model().encode, text, normalize_embeddings=True)
     vec  = await loop.run_in_executor(None, fn)
     return vec.tolist()
@@ -66,7 +77,7 @@ async def _embed_async(text: str) -> list[float]:
 # POST /suggest/search
 # ══════════════════════════════════════════════════════════════════
 
-@router.post("/search")
+@router.post("/search", dependencies=[Depends(rate_limit)])
 async def suggest_search(
     search_type: str                    = Form(...),   # "title" | "abstract" | "fulltext"
     query_text:  str                    = Form(""),
@@ -130,6 +141,7 @@ async def suggest_search(
     pdf_filename: Optional[str]   = None
     if file and file.filename:
         pdf_bytes    = await file.read()
+        validate_pdf_bytes(pdf_bytes, file.filename)
         pdf_filename = file.filename
 
     # En az bir girdi zorunlu
@@ -177,7 +189,8 @@ async def suggest_search(
             )
 
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Pipeline hatası: {exc}")
+        logger.error("[Suggest] Pipeline hatası: %s", exc)
+        raise HTTPException(status_code=500, detail="Öneri işlenirken bir hata oluştu.")
 
     result["duration_ms"] = int((time.time() - t0) * 1000)
     return result
@@ -201,8 +214,12 @@ async def suggest_health():
 
     try:
         import urllib.request
-        r = urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=2)
-        ollama_ok = r.status == 200
+
+        def _check():
+            with urllib.request.urlopen(f"{OLLAMA_URL}/api/tags", timeout=2) as r:
+                return r.status == 200
+
+        ollama_ok = await asyncio.get_running_loop().run_in_executor(None, _check)
     except Exception:
         pass
 

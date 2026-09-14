@@ -1,10 +1,11 @@
-from fastapi import APIRouter, UploadFile, File, Form
+from fastapi import APIRouter, Depends, UploadFile, File, Form
 from services.comparison_service import run_compare
 from services.highlight_service  import run_compare_highlight
+from services.rate_limit import rate_limit
 
 router = APIRouter()
 
-@router.post("/compare")
+@router.post("/compare", dependencies=[Depends(rate_limit)])
 async def compare_documents(
     target_file:   UploadFile       = File(...),
     compare_files: list[UploadFile] = File(...),
@@ -13,7 +14,7 @@ async def compare_documents(
     """Compare the target PDF with one or more PDFs and return similarity results."""
     return await run_compare(target_file, compare_files, search_type)
 
-@router.post("/compare-highlight")
+@router.post("/compare-highlight", dependencies=[Depends(rate_limit)])
 async def compare_highlight(
     target_file:  UploadFile = File(...),
     compare_file: UploadFile = File(...),

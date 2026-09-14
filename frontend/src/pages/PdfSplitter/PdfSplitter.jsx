@@ -5,6 +5,7 @@ import {
   downloadSectionPDF,
   downloadSectionsPDF,
   previewSectionPDF,
+  validatePdfFile,
 } from "../../../services/service";
 import "./PdfSplitter.css";
 
@@ -20,10 +21,10 @@ function Navbar() {
   ];
   return (
     <nav className="ps-nav">
-      <div className="ps-nav__logo" onClick={() => navigate("/")}>
+      <button className="ps-nav__logo" onClick={() => navigate("/")} aria-label="Ana sayfaya git">
         <span className="ps-nav__logo-mark">A</span>
         <span className="ps-nav__logo-text">Altay<em>AI</em></span>
-      </div>
+      </button>
       <ul className={`ps-nav__links${menuOpen ? " open" : ""}`}>
         {NAV_LINKS.map(l => (
           <li key={l.path}>
@@ -217,12 +218,15 @@ function SectionCard({ section, index, selected, onToggle, onPreview, onDownload
 }
 
 // ── Drop Zone ──────────────────────────────────────────────────────
-function DropZone({ onFile, loading }) {
+function DropZone({ onFile, loading, onError }) {
   const [drag, setDrag] = useState(false);
   const inputRef = useRef(null);
   const handle = useCallback(f => {
-    if (f?.type === "application/pdf") onFile(f);
-  }, [onFile]);
+    if (!f) return;
+    const err = validatePdfFile(f);
+    if (err) { onError?.(err); return; }
+    onFile(f);
+  }, [onFile, onError]);
 
   return (
     <div
@@ -351,7 +355,7 @@ export default function PdfSplitter() {
         <aside className="ps-sidebar">
           <div className="ps-sidebar__card">
             <div className="ps-sidebar__section-label">Dosya Yükle</div>
-            <DropZone onFile={handleFile} loading={loading} />
+            <DropZone onFile={handleFile} loading={loading} onError={setError} />
             {file && !loading && (
               <div className="ps-sidebar__file-info">
                 <div className="ps-sidebar__file-icon">

@@ -1,8 +1,13 @@
+import logging
+
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import StreamingResponse
 from services.pdf_splitter import split_pdf_by_font_size
+from services.upload_validation import read_and_validate_pdf
 import fitz
 import io
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -12,7 +17,7 @@ async def split_pdf(
     font_threshold: float = Form(22.0)
 ):
     """Split a PDF into sections based on font size."""
-    file_bytes = await file.read()
+    file_bytes = await read_and_validate_pdf(file)
     result = split_pdf_by_font_size(
         file_bytes=file_bytes,
         font_threshold=font_threshold,
@@ -28,7 +33,7 @@ async def download_section(
     title: str = Form("bolum")
 ):
     """Download the page range from the original PDF as a PDF file."""
-    file_bytes = await file.read()
+    file_bytes = await read_and_validate_pdf(file)
     try:
         pdf_bytes = _extract_pages(file_bytes, start_page, end_page)
         safe_title = _safe_filename(title)
@@ -40,8 +45,11 @@ async def download_section(
                 "Content-Length": str(len(pdf_bytes))
             }
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("[PDF] download-section hatası: %s", e)
+        raise HTTPException(status_code=500, detail="PDF işlenirken bir hata oluştu.")
 
 @router.post("/preview-section")
 async def preview_section(
@@ -50,7 +58,7 @@ async def preview_section(
     end_page: int = Form(...),
 ):
     """Returns the page range inline for PDF preview."""
-    file_bytes = await file.read()
+    file_bytes = await read_and_validate_pdf(file)
     try:
         pdf_bytes = _extract_pages(file_bytes, start_page, end_page)
         return StreamingResponse(
@@ -61,8 +69,11 @@ async def preview_section(
                 "Content-Length": str(len(pdf_bytes))
             }
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("[PDF] preview-section hatası: %s", e)
+        raise HTTPException(status_code=500, detail="PDF işlenirken bir hata oluştu.")
 
 # ── Auxiliary Functions ────────────────────────────────────────────────────
 def _extract_pages(file_bytes: bytes, start_page: int, end_page: int) -> bytes:
@@ -75,14 +86,22 @@ def _extract_pages(file_bytes: bytes, start_page: int, end_page: int) -> bytes:
     bytes: The extracted pages as a PDF file."""
 
     doc = fitz.open(stream=file_bytes, filetype="pdf")
-    writer = fitz.open()
-    s = max(0, start_page - 1)        
-    e = min(len(doc), end_page) - 1   
-    writer.insert_pdf(doc, from_page=s, to_page=e)
-    pdf_bytes = writer.tobytes()
-    writer.close()
-    doc.close()
-    return pdf_bytes
+    try:
+        s = max(0, start_page - 1)
+        e = min(len(doc), end_page) - 1
+        if s > e or s >= len(doc):
+            raise ValueError(
+                f"Geçersiz sayfa aralığı: start_page={start_page}, end_page={end_page}, "
+                f"toplam sayfa={len(doc)}"
+            )
+        writer = fitz.open()
+        try:
+            writer.insert_pdf(doc, from_page=s, to_page=e)
+            return writer.tobytes()
+        finally:
+            writer.close()
+    finally:
+        doc.close()
 
 def _safe_filename(name: str) -> str:
     """Convert a string to a safe filename by removing or replacing unsafe characters.

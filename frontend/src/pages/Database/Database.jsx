@@ -7,10 +7,10 @@ import {
   dbListPdfs,
   dbGetDetail,
   dbReset,
+  dbPreviewUrl,
+  validatePdfFile,
 } from "../../../services/service";
 import "./Database.css";
-
-const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 // ══════════════════════════════════════════════════════════════════
 // NAVBAR
@@ -26,12 +26,12 @@ function Navbar() {
   ];
   return (
     <nav className="db-nav">
-      <div className="db-nav__logo" onClick={() => navigate("/")}>
+      <button className="db-nav__logo" onClick={() => navigate("/")} aria-label="Ana sayfaya git">
         <span className="db-logo-hex">A</span>
         <span className="db-nav__brand">
           Altay<em>AI</em>
         </span>
-      </div>
+      </button>
       <ul className={`db-nav__links${open ? " open" : ""}`}>
         {links.map(([l, p]) => (
           <li key={p}>
@@ -83,7 +83,14 @@ function PdfDropZone({ files, onFiles }) {
 
   const handle = useCallback(
     (fileList) => {
-      const pdfs = Array.from(fileList).filter((f) => f.type === "application/pdf");
+      const pdfs = [];
+      const errors = [];
+      for (const f of Array.from(fileList)) {
+        const err = validatePdfFile(f);
+        if (err) errors.push(`${f.name}: ${err}`);
+        else pdfs.push(f);
+      }
+      if (errors.length) alert(errors.join("\n"));
       if (pdfs.length)
         onFiles((prev) => {
           const names = new Set(prev.map((f) => f.name));
@@ -274,7 +281,7 @@ function PdfRow({ doc, index, onDelete, onDetail, onPreview }) {
 // PDF ÖNİZLEME MODALI
 // ══════════════════════════════════════════════════════════════════
 function PdfPreviewModal({ pdfName, onClose }) {
-  const previewUrl = `${API}/db/preview/${encodeURIComponent(pdfName)}`;
+  const previewUrl = dbPreviewUrl(pdfName);
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -337,13 +344,17 @@ function DetailPanel({ pdfName, onClose, onPreview }) {
 
   useEffect(() => {
     if (!pdfName) return;
+    let ignore = false;
     setLoading(true);
     setData(null);
     setTab("title");
     dbGetDetail(pdfName)
-      .then((res) => setData(res.detail))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+      .then((res) => { if (!ignore) setData(res.detail); })
+      .catch(() => { if (!ignore) setData(null); })
+      .finally(() => { if (!ignore) setLoading(false); });
+    // Kullanıcı hızlıca başka bir PDF'e tıklarsa eski isteğin cevabı
+    // görmezden gelinir — yanlış belgenin detayının gösterilmesini önler.
+    return () => { ignore = true; };
   }, [pdfName]);
 
   useEffect(() => {

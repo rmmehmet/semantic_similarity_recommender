@@ -162,10 +162,10 @@ export default function Home() {
     <div className="hm-root">
       {/* ── Navbar ── */}
       <nav className={`hm-nav${scrolled ? " hm-nav--scrolled" : ""}`}>
-        <div className="hm-nav__logo" onClick={() => navigate("/")}>
+        <button className="hm-nav__logo" onClick={() => navigate("/")} aria-label="Ana sayfaya git">
           <span className="hm-nav__logo-mark">L</span>
           <span className="hm-nav__logo-text">LIFT<em>UP</em></span>
-        </div>
+        </button>
         <ul className={`hm-nav__links${menuOpen ? " open" : ""}`}>
           {NAV_LINKS.map(l => (
             <li key={l.path}>

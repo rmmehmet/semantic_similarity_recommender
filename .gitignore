@@ -19,6 +19,7 @@ dist/
 # React Env
 frontend/.env
 frontend/.env.*
+!frontend/.env.example
 
 # npm / yarn
 npm-debug.log*
@@ -35,6 +36,9 @@ pnpm-debug.log*
 # Python
 # =========================
 __pycache__/
+
+# Logs
+*.log
 
 # =========================
 # Database

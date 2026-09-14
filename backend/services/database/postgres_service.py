@@ -8,18 +8,31 @@ import asyncpg
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL: str = os.getenv(
-    "DATABASE_URL",
-    "postgresql://postgres:123@localhost:5432/liftup_db",
-)
+DATABASE_URL: Optional[str] = os.getenv("DATABASE_URL")
 
 _pool: Optional[asyncpg.Pool] = None
+_pool_lock = None  # lazily created — see get_pool()
 
 
 async def get_pool() -> asyncpg.Pool:
-    global _pool
-    if _pool is None:
-        _pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
+    global _pool, _pool_lock
+    if _pool is not None:
+        return _pool
+
+    if not DATABASE_URL:
+        raise RuntimeError(
+            "DATABASE_URL ortam değişkeni tanımlı değil. "
+            "Production'da varsayılan/örnek bir bağlantı dizesi kullanılmaz — "
+            "lütfen DATABASE_URL değişkenini ayarlayın."
+        )
+
+    import asyncio
+    if _pool_lock is None:
+        _pool_lock = asyncio.Lock()
+
+    async with _pool_lock:
+        if _pool is None:
+            _pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
     return _pool
 
 

@@ -1,8 +1,21 @@
 import axios from "axios";
 
-const API_BASE = "http://localhost:8000";
+export const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-const api = axios.create({ baseURL: API_BASE });
+// PDF/embedding/BERT işlemleri uzun sürebilir — sonsuz beklemeyi önlemek için
+// makul ama cömert bir timeout (2 dk). Backend takılırsa kullanıcı net bir hata görür.
+const api = axios.create({ baseURL: API_BASE, timeout: 120_000 });
+
+// Backend'de ADMIN_API_KEY ayarlıysa (bkz. backend/.env.example), yıkıcı/idari
+// uçlar (add/remove/reset/reconcile) bu header'ı bekler.
+// NOT: Bu, saf bir SPA'da tarayıcı dev tools'undan görülebilen bir anahtardır —
+// gerçek çok kullanıcılı yetkilendirme değildir, sadece rastgele internet
+// trafiğine karşı bir engeldir. Gerçek kullanıcı bazlı yetkilendirme gerekirse
+// backend'e bir login/JWT katmanı eklenmelidir.
+const adminApiKey = import.meta.env.VITE_ADMIN_API_KEY;
+if (adminApiKey) {
+  api.defaults.headers.common["X-API-Key"] = adminApiKey;
+}
 
 // ════════════════════════════════════════════
 //  PDF Split & Download
@@ -256,3 +269,18 @@ export function dbPreviewUrl(pdfName) {
 
 const delay    = ms => new Promise(r => setTimeout(r, ms));
 const sanitize = n  => n.replace(/[\\/*?:"<>|]/g, "").replace(/\s+/g, "-").slice(0, 80) || "bolum";
+
+// ════════════════════════════════════════════
+//  Yükleme doğrulama (backend limitiyle uyumlu)
+// ════════════════════════════════════════════
+
+export const MAX_UPLOAD_MB = 30;
+
+export function validatePdfFile(file) {
+  if (!file) return "Dosya seçilmedi.";
+  if (file.type !== "application/pdf") return "Sadece PDF dosyaları desteklenir.";
+  if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+    return `Dosya çok büyük (maksimum ${MAX_UPLOAD_MB} MB).`;
+  }
+  return null;
+}

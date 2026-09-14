@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { compareDocuments, compareHighlight } from "../../../services/service";
+import { compareDocuments, compareHighlight, validatePdfFile } from "../../../services/service";
 import "./Similarity.css";
 
 // ── Algoritma tanımları + eşikler ─────────────────────────────────
@@ -27,10 +27,10 @@ function Navbar() {
   const [open, setOpen] = useState(false);
   return (
     <nav className="sim-nav">
-      <div className="sim-nav__logo" onClick={() => navigate("/")}>
+      <button className="sim-nav__logo" onClick={() => navigate("/")} aria-label="Ana sayfaya git">
         <span className="sim-logo-hex">A</span>
         <span className="sim-nav__brand">Altay<em>AI</em></span>
-      </div>
+      </button>
       <ul className={`sim-nav__links${open ? " open" : ""}`}>
         {[["PDF Bölme","/split"],["Benzerlik Arama","/search"],["Proje Öneri","/suggest"], ["Veritabanı","/database"]].map(([l,p]) => (
           <li key={p}><button className={`sim-nav__link${p==="/search"?" active":""}`}
@@ -323,10 +323,15 @@ function ResultCard({ result, rank, activeAlgo, onCompare, animDelay }) {
 }
 
 // ── Drop bileşenleri ───────────────────────────────────────────────
-function SingleDrop({ label, file, onFile, accent }) {
+function SingleDrop({ label, file, onFile, accent, onError }) {
   const [drag, setDrag] = useState(false);
   const ref = useRef(null);
-  const handle = f => { if (f?.type==="application/pdf") onFile(f); };
+  const handle = f => {
+    if (!f) return;
+    const err = validatePdfFile(f);
+    if (err) { onError?.(err); return; }
+    onFile(f);
+  };
   return (
     <div className={`sim-drop${drag?" drag":""}${file?" filled":""}`} style={{"--da":accent}}
       onDragOver={e=>{e.preventDefault();setDrag(true)}} onDragLeave={()=>setDrag(false)}
@@ -361,10 +366,16 @@ function SingleDrop({ label, file, onFile, accent }) {
   );
 }
 
-function MultiDrop({ files, onFiles }) {
+function MultiDrop({ files, onFiles, onError }) {
   const ref = useRef(null);
   const add = list => {
-    const pdfs = Array.from(list).filter(f=>f.type==="application/pdf");
+    const all = Array.from(list);
+    const pdfs = [];
+    for (const f of all) {
+      const err = validatePdfFile(f);
+      if (err) onError?.(`${f.name}: ${err}`);
+      else pdfs.push(f);
+    }
     onFiles(prev => { const names=new Set(prev.map(f=>f.name)); return [...prev,...pdfs.filter(f=>!names.has(f.name))]; });
   };
   const rm = name => onFiles(prev => prev.filter(f=>f.name!==name));
@@ -459,12 +470,12 @@ export default function Similarity() {
         <aside className="sim-sidebar">
           <section className="sim-panel">
             <div className="sim-panel__label"><span className="sim-dot sim-dot--cyan"/>Hedef PDF</div>
-            <SingleDrop label="Hedef PDF'i seç" file={targetFile} onFile={setTargetFile} accent="#00D4FF"/>
+            <SingleDrop label="Hedef PDF'i seç" file={targetFile} onFile={setTargetFile} accent="#00D4FF" onError={setError}/>
           </section>
 
           <section className="sim-panel">
             <div className="sim-panel__label"><span className="sim-dot sim-dot--violet"/>Karşılaştırma PDF'leri</div>
-            <MultiDrop files={compareFiles} onFiles={setCompareFiles}/>
+            <MultiDrop files={compareFiles} onFiles={setCompareFiles} onError={setError}/>
           </section>
 
           <section className="sim-panel">

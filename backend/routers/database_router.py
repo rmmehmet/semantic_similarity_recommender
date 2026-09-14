@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from functools import partial
 from pathlib import Path
 import os
 from typing import Optional
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
+from services.auth import require_admin_key
+from services.upload_validation import read_and_validate_pdf
 from services.text_preprocessing import (
     extract_title_from_pdf,
     extract_abstract_from_pdf,
@@ -54,34 +57,43 @@ COL_ABSTRACTS = "liftup_abstracts"
 COL_FULLTEXT  = "liftup_fulltext"
 
 _model: Optional[SentenceTransformer] = None
+_model_lock = threading.Lock()
 
 
 def _get_model() -> SentenceTransformer:
     global _model
     if _model is None:
-        _model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+        with _model_lock:
+            if _model is None:
+                _model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
     return _model
 
 
 async def _embed_async(texts: list[str]) -> list[list[float]]:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     fn   = partial(_get_model().encode, texts, normalize_embeddings=True)
     vecs = await loop.run_in_executor(None, fn)
     return vecs.tolist()
+
+
+async def _run_blocking(fn, *args, **kwargs):
+    """Senkron (bloklayan) Milvus/IO çağrılarını thread pool'a taşır."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, partial(fn, *args, **kwargs))
 
 
 # ══════════════════════════════════════════════════════════════════
 # PDF YÜKLE
 # ══════════════════════════════════════════════════════════════════
 
-@router.post("/add")
+@router.post("/add", dependencies=[Depends(require_admin_key)])
 async def add_pdf(
     file: UploadFile   = File(...),
     book_name: str     = Form(""),
     year: int          = Form(0),
     force_update: bool = Form(False),
 ):
-    pdf_bytes = await file.read()
+    pdf_bytes = await read_and_validate_pdf(file)
     pdf_name  = file.filename or "unknown.pdf"
 
     disk_path = PDF_STORAGE_DIR / Path(pdf_name).name
@@ -120,11 +132,14 @@ async def add_pdf(
 
     # Milvus yazımı — hata olursa milvus_synced FALSE kalır, loglanır
     try:
-        milvus_delete_pdf(pdf_name)
-        milvus_insert_title(pdf_name, title, title_vec)
-        milvus_insert_abstract(pdf_name, abs_chunks[0] if abs_chunks else abstract, abstract_vec)
+        await _run_blocking(milvus_delete_pdf, pdf_name)
+        await _run_blocking(milvus_insert_title, pdf_name, title, title_vec)
+        await _run_blocking(
+            milvus_insert_abstract,
+            pdf_name, abs_chunks[0] if abs_chunks else abstract, abstract_vec,
+        )
         if ft_chunks and ft_vecs:
-            milvus_insert_fulltext_chunks(pdf_name, ft_chunks, ft_vecs)
+            await _run_blocking(milvus_insert_fulltext_chunks, pdf_name, ft_chunks, ft_vecs)
 
         # Başarılıysa senkronize olarak işaretle
         await pg_mark_synced(pdf_name)
@@ -150,7 +165,7 @@ async def add_pdf(
 # PDF SİL
 # ══════════════════════════════════════════════════════════════════
 
-@router.delete("/remove/{pdf_name:path}")
+@router.delete("/remove/{pdf_name:path}", dependencies=[Depends(require_admin_key)])
 async def remove_pdf(pdf_name: str):
     deleted_pg = await pg_delete_paper(pdf_name)
     if not deleted_pg:
@@ -159,7 +174,7 @@ async def remove_pdf(pdf_name: str):
     # Milvus silme — başarısız olursa logla ama 500 verme
     # (PG zaten silindi, reconcile ile Milvus temizlenir)
     try:
-        milvus_delete_pdf(pdf_name)
+        await _run_blocking(milvus_delete_pdf, pdf_name)
     except Exception as exc:
         logger.error("[Milvus] Silme hatası — %s: %s", pdf_name, exc)
 
@@ -174,8 +189,12 @@ async def remove_pdf(pdf_name: str):
 # LİSTELE
 # ══════════════════════════════════════════════════════════════════
 
+MAX_LIST_LIMIT = 1000
+
+
 @router.get("/list")
 async def list_pdfs(limit: int = 500):
+    limit = max(1, min(limit, MAX_LIST_LIMIT))
     docs = await pg_list_papers(limit)
     return {"documents": docs}
 
@@ -229,9 +248,10 @@ async def preview_pdf(pdf_name: str):
 @router.get("/stats")
 async def get_stats():
     try:
-        mv = milvus_stats()
+        mv = await _run_blocking(milvus_stats)
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Milvus bağlantı hatası: {exc}")
+        logger.error("[Stats] Milvus bağlantı hatası: %s", exc)
+        raise HTTPException(status_code=503, detail="Milvus bağlantı hatası")
 
     pg = await pg_stats()
 
@@ -252,7 +272,7 @@ async def get_stats():
 # POST /database/reconcile
 # ══════════════════════════════════════════════════════════════════
 
-@router.post("/reconcile")
+@router.post("/reconcile", dependencies=[Depends(require_admin_key)])
 async def reconcile_database():
     """
     İki yönlü tutarsızlık kontrolü:
@@ -311,15 +331,16 @@ async def reconcile_database():
             abstract_vec = all_vecs[abs_start] if abs_chunks else all_vecs[0]
             ft_vecs      = all_vecs[abs_end:]
 
-            milvus_delete_pdf(pdf_name)
-            milvus_insert_title(pdf_name, title, title_vec)
-            milvus_insert_abstract(
+            await _run_blocking(milvus_delete_pdf, pdf_name)
+            await _run_blocking(milvus_insert_title, pdf_name, title, title_vec)
+            await _run_blocking(
+                milvus_insert_abstract,
                 pdf_name,
                 abs_chunks[0] if abs_chunks else abstract,
                 abstract_vec,
             )
             if ft_chunks and ft_vecs:
-                milvus_insert_fulltext_chunks(pdf_name, ft_chunks, ft_vecs)
+                await _run_blocking(milvus_insert_fulltext_chunks, pdf_name, ft_chunks, ft_vecs)
 
             await pg_mark_synced(pdf_name)
             result["fixed_unsynced"].append(pdf_name)
@@ -331,9 +352,7 @@ async def reconcile_database():
 
     # ── 2. Milvus'ta var, PG'de yok → hayalet vektör sil ─────────
     try:
-        milvus_names = await asyncio.get_event_loop().run_in_executor(
-            None, milvus_get_all_pdf_names
-        )
+        milvus_names = await _run_blocking(milvus_get_all_pdf_names)
         pg_names = await pg_get_all_pdf_names()
 
         ghosts = milvus_names - pg_names
@@ -342,7 +361,7 @@ async def reconcile_database():
 
         for ghost in ghosts:
             try:
-                milvus_delete_pdf(ghost)
+                await _run_blocking(milvus_delete_pdf, ghost)
                 result["ghost_removed"].append(ghost)
                 logger.info("[Reconcile] Hayalet silindi: %s", ghost)
             except Exception as exc:
@@ -368,19 +387,21 @@ async def reconcile_database():
 # SIFIRLA
 # ══════════════════════════════════════════════════════════════════
 
-@router.post("/reset")
+@router.post("/reset", dependencies=[Depends(require_admin_key)])
 async def reset_database():
     await pg_truncate_all()
 
     try:
-        milvus_drop_all()
+        await _run_blocking(milvus_drop_all)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Milvus drop hatası: {exc}")
+        logger.error("[Reset] Milvus drop hatası: %s", exc)
+        raise HTTPException(status_code=500, detail="Milvus drop hatası")
 
     try:
-        create_all_collections()
+        await _run_blocking(create_all_collections)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Milvus koleksiyon hatası: {exc}")
+        logger.error("[Reset] Milvus koleksiyon hatası: %s", exc)
+        raise HTTPException(status_code=500, detail="Milvus koleksiyon hatası")
 
     for f in PDF_STORAGE_DIR.glob("*.pdf"):
         f.unlink(missing_ok=True)

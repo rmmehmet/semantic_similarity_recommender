@@ -1,9 +1,0 @@
-2026-09-02 00:04:07  INFO      main — ═══════════════════════════════════════════════════════
-2026-09-02 00:04:07  INFO      main — AltayAI başlatılıyor…
-2026-09-02 00:04:07  INFO      main — [✓] PostgreSQL bağlantısı başarılı
-2026-09-02 00:04:07  INFO      main — [✓] Milvus koleksiyonları hazır
-2026-09-02 00:04:07  INFO      main — [✓] Ollama erişilebilir
-2026-09-02 00:04:07  INFO      main — [✓] Tüm kayıtlar Milvus ile senkronize
-2026-09-02 00:04:07  INFO      main — AltayAI hazır → http://localhost:8000
-2026-09-02 00:04:07  INFO      main — ═══════════════════════════════════════════════════════
-2026-09-02 00:10:41  INFO      main — AltayAI kapatıldı.

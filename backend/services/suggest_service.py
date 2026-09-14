@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from functools import partial
 from typing import List, Dict, Optional, Any
 
@@ -56,12 +57,15 @@ RAG_PG_CHUNKS_PER_PAPER = 4   # Her paper için PG'den alınacak chunk sayısı
 
 # ── Singleton BERT modeli ─────────────────────────────────────────
 _model: Optional[SentenceTransformer] = None
+_model_lock = threading.Lock()
 
 
 def _get_model() -> SentenceTransformer:
     global _model
     if _model is None:
-        _model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+        with _model_lock:
+            if _model is None:
+                _model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
     return _model
 
 
@@ -70,8 +74,14 @@ def _embed_sync(text: str) -> List[float]:
 
 
 async def _embed_async(text: str) -> List[float]:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, partial(_embed_sync, text))
+
+
+async def _milvus_search_async(*args, **kwargs):
+    """milvus_search senkron/bloklayan bir çağrıdır — thread pool'a taşınır."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, partial(milvus_search, *args, **kwargs))
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -133,7 +143,7 @@ async def run_title_search(
     """
     logger.info("[Suggest/title] başladı — top_k=%d", top_k)
 
-    raw_hits = milvus_search(
+    raw_hits = await _milvus_search_async(
         collection_name=COL_TITLES,
         query_vector=query_vec,
         top_k=top_k,
@@ -143,7 +153,7 @@ async def run_title_search(
     results: List[Dict] = [_normalize_hit(h) for h in raw_hits]
     results = await _enrich_pg(results)
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     llm  = await loop.run_in_executor(
         None,
         partial(generate_topic_suggestion, query_text, "title", results),
@@ -167,7 +177,7 @@ async def run_abstract_search(
     """
     logger.info("[Suggest/abstract] başladı — top_k=%d", top_k)
 
-    raw_hits = milvus_search(
+    raw_hits = await _milvus_search_async(
         collection_name=COL_ABSTRACTS,
         query_vector=query_vec,
         top_k=top_k,
@@ -187,7 +197,7 @@ async def run_abstract_search(
 
     results = await _enrich_pg(results)
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     llm  = await loop.run_in_executor(
         None,
         partial(generate_topic_suggestion, query_text, "abstract", results),
@@ -217,7 +227,7 @@ async def run_fulltext_search(
     logger.info("[Suggest/fulltext] başladı — top_k=%d", top_k)
 
     # ── 1. Chunk araması ──────────────────────────────────────────
-    raw_hits = milvus_search(
+    raw_hits = await _milvus_search_async(
         collection_name=COL_FULLTEXT,
         query_vector=query_vec,
         top_k=top_k * CHUNK_FETCH_MULTIPLIER,
@@ -292,7 +302,7 @@ async def run_fulltext_search(
     pdf_title = results[0].get("raw_title", "") if results else ""
 
     # ── 6. RAG + LLM ─────────────────────────────────────────────
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     llm  = await loop.run_in_executor(
         None,
         partial(generate_rag_analysis, pdf_full_text, pdf_title, results),

@@ -15,7 +15,7 @@ def extract_title_from_pdf(pdf_bytes: bytes) -> str:
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     except Exception:
-        return "PDF corrupted or unreadable"
+        return ""
 
     try:
         meta_title = doc.metadata.get("title", "").strip()
@@ -23,7 +23,7 @@ def extract_title_from_pdf(pdf_bytes: bytes) -> str:
             return meta_title[:512]
 
         if len(doc) == 0:
-            return "PDF empty"
+            return ""
 
         page   = doc[0]
         blocks = page.get_text("dict")["blocks"]

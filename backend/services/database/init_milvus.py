@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 
 from pymilvus import (
@@ -10,6 +11,8 @@ from pymilvus import (
     connections,
     utility,
 )
+
+logger = logging.getLogger(__name__)
 
 MILVUS_HOST = os.getenv("MILVUS_HOST", "localhost")
 MILVUS_PORT = int(os.getenv("MILVUS_PORT", "19530"))
@@ -72,7 +75,7 @@ def create_all_collections() -> None:
         desc="PDF fulltext collection — for RAG retrieval (chunk-based)",
     )
 
-    print("✓ All collections are ready.")
+    logger.info("Tüm koleksiyonlar hazır.")
 
 
 def _ensure_collection(
@@ -81,7 +84,7 @@ def _ensure_collection(
     desc: str,
 ) -> Collection:
     if utility.has_collection(name):
-        print(f"  – {name}: already exists, loading.")
+        logger.info("%s: zaten var, yükleniyor.", name)
         col = Collection(name)
         col.load()
         return col
@@ -90,7 +93,7 @@ def _ensure_collection(
     col    = Collection(name=name, schema=schema)
     col.create_index(field_name="vector", index_params=HNSW_INDEX)
     col.load()
-    print(f"  ✓ {name}: created.")
+    logger.info("%s: oluşturuldu.", name)
     return col
 
 
