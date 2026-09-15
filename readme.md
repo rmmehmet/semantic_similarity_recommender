@@ -1,18 +1,18 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white"/>
   <img src="https://img.shields.io/badge/FastAPI-0.111-009688?style=for-the-badge&logo=fastapi&logoColor=white"/>
-  <img src="https://img.shields.io/badge/React-18.3-61DAFB?style=for-the-badge&logo=react&logoColor=black"/>
+  <img src="https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black"/>
   <img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white"/>
   <img src="https://img.shields.io/badge/Milvus-2.4-00A1EA?style=for-the-badge&logo=milvus&logoColor=white"/>
-  <img src="https://img.shields.io/badge/Ollama-Llama_3.1_Q4-FF6B35?style=for-the-badge"/>
-  <img src="https://img.shields.io/badge/sentence--transformers-3.0-FF9900?style=for-the-badge"/>
+  <img src="https://img.shields.io/badge/OpenRouter-Llama_3.1_8B-8A2BE2?style=for-the-badge"/>
+  <img src="https://img.shields.io/badge/sentence--transformers-5.4-FF9900?style=for-the-badge"/>
 </p>
 
-<h1 align="center">AltayAI — Academic Similarity & Project Suggestion System</h1>
+<h1 align="center">AltayAI — Academic Similarity, Suggestion & PDF Chat Platform</h1>
 
 <p align="center">
-  A RAG-powered academic decision support platform that performs multi-modal similarity analysis,<br/>
-  automated paper extraction from PDFs, and LLM-driven originality assessment with topic suggestions.
+  A multi-tenant, RAG-powered academic decision-support platform: split multi-paper PDF bundles,<br/>
+  search your own library semantically, get LLM-driven originality analysis, and chat with your documents.
 </p>
 
 ---
@@ -23,30 +23,36 @@
 - [Features](#features)
 - [System Architecture](#system-architecture)
 - [Technology Stack](#technology-stack)
+- [Authentication & Multi-Tenancy](#authentication--multi-tenancy)
 - [Database Schemas](#database-schemas)
   - [PostgreSQL](#postgresql-schema)
   - [Milvus Collections](#milvus-collections)
-- [Similarity Engine](#similarity-engine)
-- [PDF Splitter](#pdf-splitter)
-- [RAG Pipeline](#rag-pipeline)
+- [Core Modules](#core-modules)
+  - [PDF Splitter](#pdf-splitter)
+  - [Project Suggestion (Similarity Engine)](#project-suggestion-similarity-engine)
+  - [PDF Chat (RAG)](#pdf-chat-rag)
+- [LLM Integration (OpenRouter)](#llm-integration-openrouter)
 - [Project Structure](#project-structure)
 - [Installation](#installation)
 - [Running the Application](#running-the-application)
+- [Embedding Model Migrations](#embedding-model-migrations)
 - [API Reference](#api-reference)
 - [Environment Variables](#environment-variables)
+- [Known Limitations](#known-limitations)
 
 ---
 
 ## Overview
 
-**AltayAI** is an end-to-end academic intelligence platform built for university-level project evaluation. It enables students and faculty to:
+**AltayAI** is an end-to-end academic intelligence platform built for university-level project evaluation. Every user has their own private PDF library — nothing is shared across accounts. It enables students and faculty to:
 
-- Detect semantic similarity between academic papers using multiple NLP methods
-- Split multi-paper PDFs into individual proceedings based on configurable thresholds
-- Query a vector database for similar works across title, abstract, and full-text dimensions
-- Receive LLM-generated originality analyses, improvement suggestions, and alternative topic proposals
+- Register/log in (JWT, httpOnly cookie) and manage a personal library of academic PDFs
+- Split multi-paper PDF bundles into individual documents by font-size heuristics
+- Search their own library semantically across title, abstract, and full-text dimensions
+- Receive LLM-generated originality analyses, improvement suggestions, and alternative topic proposals for a new project idea
+- Chat with their uploaded PDFs (single document, a chosen subset, or the whole library) in a persistent, ChatGPT-style conversation history
 
-The system goes beyond raw similarity scores — it **explains why** two documents are similar, **highlights** what is unique, and **proposes** genuinely novel research directions.
+The system goes beyond raw similarity scores — it **explains why** two documents are similar, **highlights** what is unique, and **proposes** genuinely novel research directions, all grounded in the user's own documents via retrieval-augmented generation.
 
 ---
 
@@ -54,54 +60,56 @@ The system goes beyond raw similarity scores — it **explains why** two documen
 
 | Module | Description |
 |---|---|
-| **PDF Splitter** | Threshold-based proceeding extraction from multi-paper PDF bundles |
-| **Similarity Search** | Multi-method similarity: Jaccard, TF-IDF, Cosine, Sentence-BERT |
-| **Project Suggestion** | Three-mode semantic search (title / abstract / full-text) |
-| **RAG Analysis** | Retrieval-Augmented Generation with chunk-level context building |
-| **LLM Suggestions** | Llama 3.1 Q4 via Ollama — local, GPU-accelerated, no API key required |
-| **Database Manager** | Full CRUD for papers, chunks, keywords; Milvus + PostgreSQL sync |
+| **Auth** | Email/password registration & login, JWT in an httpOnly cookie, bcrypt password hashing, admin role auto-granted to configured emails |
+| **PDF Splitter** | Font-size-threshold based extraction of individual papers from a multi-paper PDF bundle |
+| **Project Suggestion** | Three-mode semantic search (title / abstract / full-text) over the user's own library, each producing an LLM originality assessment |
+| **PDF Chat** | RAG chat over one, several, or all of the user's PDFs; conversations are persisted (Postgres) with a ChatGPT-style new-chat/history sidebar |
+| **Database Manager** | Per-user PDF upload/list/preview/delete, content-hash duplicate detection, PostgreSQL ⇄ Milvus sync + admin reconcile/reset |
+| **Rate Limiting** | Per-client, in-memory sliding window on the expensive (LLM/embedding) endpoints |
 
 ---
 
 ## System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        React Frontend                           │
-│   PdfSplitter │ Similarity │ Suggest │ Database                 │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ HTTP / multipart-form-data
-┌────────────────────────────▼────────────────────────────────────┐
-│                      FastAPI Backend                            │
-│                                                                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────────┐  │
-│  │ pdf_router   │  │similarity_   │  │   suggest_router      │  │
-│  │              │  │router        │  │                       │  │
-│  └──────┬───────┘  └──────┬───────┘  └──────────┬────────────┘  │
-│         │                 │                     │               │
-│  ┌──────▼─────────────────▼─────────────────────▼────────────┐  │
-│  │                    Services Layer                         │  │
-│  │                                                           │  │
-│  │  text_preprocessing  │  chunking_service                 │  │
-│  │  suggest_service     │  comparison_service               │  │
-│  │  highlight_service   │  llm_suggestion_service           │  │
-│  └──────┬───────────────────────────────────┬───────────────┘  │
-│         │                                   │               │
-│  ┌──────▼──────────┐            ┌───────────▼─────────────┐  │
-│  │   PostgreSQL    │            │         Milvus          │  │
-│  │  papers/chunks  │            │  liftup_titles          │  │
-│  │  keywords       │            │  liftup_abstracts       │  │
-│  │  searches       │            │  liftup_fulltext        │  │
-│  │  suggestions    │            │  (HNSW · COSINE · 384d) │  │
-│  └─────────────────┘            └─────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-                             │
-              ┌──────────────▼──────────────┐
-              │     Ollama (local)          │
-              │  llama3.1:8b-instruct-q4_K_M│
-              │  GPU-accelerated (num_gpu=99)│
-              └─────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                          React 19 Frontend                           │
+│    Auth  │  Home  │  PdfSplitter  │  Suggest  │  Chat  │  Database   │
+└────────────────────────────────┬──────────────────────────────────────┘
+                                  │ HTTP (axios, withCredentials — JWT cookie)
+┌────────────────────────────────▼──────────────────────────────────────┐
+│                          FastAPI Backend                              │
+│                                                                       │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌───────────┐ ┌──────┐ │
+│  │auth_router │ │chat_router │ │database_   │ │pdf_router │ │suggest│ │
+│  │/auth       │ │/chat       │ │router /db  │ │/pdf       │ │_router│ │
+│  └─────┬──────┘ └─────┬──────┘ └─────┬──────┘ └─────┬─────┘ └───┬───┘ │
+│        │              │              │              │           │     │
+│  ┌─────▼──────────────▼──────────────▼──────────────▼───────────▼──┐ │
+│  │                         Services Layer                          │ │
+│  │  auth / security       │  text_preprocessing / chunking_service │ │
+│  │  rate_limit             │  chat_service / suggest_service       │ │
+│  │  upload_validation      │  llm/openrouter_client (+ retry)      │ │
+│  └─────┬──────────────────────────────────────┬────────────────────┘ │
+│        │                                      │                      │
+│  ┌─────▼─────────────┐              ┌─────────▼──────────────────┐  │
+│  │    PostgreSQL      │              │           Milvus            │  │
+│  │  users · papers     │              │  liftup_titles              │  │
+│  │  chunks              │              │  liftup_abstracts           │  │
+│  │  chat_conversations  │              │  liftup_fulltext             │  │
+│  │  chat_messages        │              │  (HNSW · COSINE · 768d,     │  │
+│  │  (per-user scoped)    │              │   ef=128 search-time)      │  │
+│  └───────────────────┘              └───────────────────────────┘  │
+└──────────────────────────────────┬────────────────────────────────────┘
+                                    │ HTTPS (Bearer key)
+                       ┌────────────▼─────────────┐
+                       │       OpenRouter          │
+                       │  meta-llama/llama-3.1-    │
+                       │  8b-instruct (cloud)      │
+                       └───────────────────────────┘
 ```
+
+Everything user-facing is scoped by `user_id` end to end: Postgres rows carry a `user_id` column, Milvus documents carry a `user_id` scalar field used in every search/delete filter expression, and the JWT `sub` claim is the only source of identity the backend trusts.
 
 ---
 
@@ -113,31 +121,49 @@ The system goes beyond raw similarity scores — it **explains why** two documen
 |---|---|---|
 | `fastapi` | 0.111.x | Async REST API framework |
 | `uvicorn` | 0.30.x | ASGI server |
-| `asyncpg` | 0.29.x | Async PostgreSQL driver |
-| `pymilvus` | 2.4.x | Milvus vector database client |
-| `sentence-transformers` | 3.0.x | `paraphrase-multilingual-MiniLM-L12-v2` embedding |
-| `pymupdf` (fitz) | 1.24.x | PDF text extraction |
-| `scikit-learn` | 1.5.x | TF-IDF vectorization |
+| `asyncpg` | 0.31.x | Async PostgreSQL driver |
+| `alembic` | 1.14.x | PostgreSQL schema migrations |
+| `pymilvus` | 3.0.x | Milvus vector database client |
+| `sentence-transformers` | 5.4.x | Embedding model runtime (`paraphrase-multilingual-mpnet-base-v2`) |
+| `PyMuPDF` (fitz) | 1.27.x | PDF text/font extraction |
+| `scikit-learn` | 1.7.x | Listed in `requirements.txt`; unused since the similarity-comparison feature was replaced by PDF Chat |
 | `python-multipart` | 0.0.9 | File upload support |
-| `httpx` | 0.27.x | Async HTTP client |
-| `pydantic` | 2.7.x | Data validation |
+| `httpx` / `requests` | 0.28.x / 2.34.x | HTTP clients |
+| `pydantic` | 2.13.x | Data validation |
+| `PyJWT` | 2.10.x | JWT issuing/verification |
+| `bcrypt` | 4.2.x | Password hashing |
+| `phonenumbers` | 9.0.x | Phone number validation |
 
 ### Frontend
 
 | Package | Version | Purpose |
 |---|---|---|
-| `react` | 18.3.x | UI framework |
-| `react-router-dom` | 6.x | Client-side routing |
-| `vite` | 5.x | Build tool |
+| `react` / `react-dom` | 19.2.x | UI framework |
+| `react-router-dom` | 7.x | Client-side routing |
+| `axios` | 1.16.x | HTTP client (cookie-based auth) |
+| `vite` | 8.x | Build tool / dev server |
 
 ### Infrastructure
 
-| Component | Version | Purpose |
-|---|---|---|
-| PostgreSQL | 16 | Relational metadata & full text storage |
-| Milvus | 2.4 | Vector similarity search (HNSW index) |
-| Ollama | latest | Local LLM inference server |
-| Llama 3.1 | 8B-instruct-Q4_K_M | Quantized LLM for academic analysis |
+| Component | Purpose |
+|---|---|
+| PostgreSQL 16 | Users, paper metadata/full text, chunks, chat history |
+| Milvus 2.4+ | Vector similarity search (HNSW index, per-user filtered) |
+| [OpenRouter](https://openrouter.ai/) | Hosted LLM inference — `meta-llama/llama-3.1-8b-instruct` by default, model swappable via env var, no local GPU required |
+
+> **No local LLM server is required.** Earlier versions of this project ran Llama 3.1 locally via Ollama; the LLM layer now talks to OpenRouter over HTTPS (see [LLM Integration](#llm-integration-openrouter)). The embedding model, however, still runs **locally** via `sentence-transformers` (CPU by default) — only the generative model is cloud-hosted.
+
+---
+
+## Authentication & Multi-Tenancy
+
+- `POST /auth/register` — email, first/last name, phone, password + confirmation. No email/SMS verification step; only format validation (`email-validator`, `phonenumbers`) and duplicate checks.
+- `POST /auth/login` — email + password → sets an httpOnly session cookie (`altayai_token`, JWT).
+- `POST /auth/logout` — clears the cookie.
+- `GET /auth/me` — returns the current session's user.
+- Passwords are hashed with `bcrypt`. The JWT is verified on every request via a FastAPI dependency (`get_current_user`); admin-only endpoints additionally require `require_admin`.
+- Accounts registering with an email listed in `ADMIN_EMAILS` (comma-separated, case-insensitive) are automatically granted the `admin` role — nobody can self-select their own role.
+- `COOKIE_SECURE=false` for local `http://localhost` development; set to `true` behind HTTPS in production.
 
 ---
 
@@ -145,125 +171,110 @@ The system goes beyond raw similarity scores — it **explains why** two documen
 
 ### PostgreSQL Schema
 
-#### `papers` — Core paper metadata and raw text
+#### `users`
+
+```sql
+CREATE TABLE users (
+    id             SERIAL      PRIMARY KEY,
+    email          TEXT        NOT NULL,
+    phone          TEXT        NOT NULL,
+    first_name     TEXT        NOT NULL,
+    last_name      TEXT        NOT NULL,
+    password_hash  TEXT        NOT NULL,
+    role           TEXT        NOT NULL DEFAULT 'user' CHECK (role IN ('user', 'admin')),
+    is_active      BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_at     TIMESTAMP   DEFAULT NOW(),
+    updated_at     TIMESTAMP   DEFAULT NOW()
+);
+-- UNIQUE (email), UNIQUE (phone)
+```
+
+#### `papers` — per-user paper metadata and raw text
 
 ```sql
 CREATE TABLE papers (
-    id          SERIAL      PRIMARY KEY,
-    pdf_name    TEXT        UNIQUE NOT NULL,
-    raw_title   TEXT,
-    abstract    TEXT,
-    fulltext    TEXT,
-    book_name   TEXT        DEFAULT '',
-    year        INTEGER     DEFAULT 0,
-    created_at  TIMESTAMP   DEFAULT NOW(),
-    updated_at  TIMESTAMP   DEFAULT NOW()
+    id             SERIAL      PRIMARY KEY,
+    pdf_name       TEXT        NOT NULL,
+    raw_title      TEXT,
+    abstract       TEXT,
+    fulltext       TEXT,
+    book_name      TEXT        DEFAULT '',
+    year           INTEGER     DEFAULT 0,
+    content_hash   CHAR(64),                 -- SHA-256 of the file, for duplicate detection
+    user_id        INTEGER     NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    milvus_synced  BOOLEAN     DEFAULT FALSE,
+    created_at     TIMESTAMP   DEFAULT NOW(),
+    updated_at     TIMESTAMP   DEFAULT NOW()
 );
+-- UNIQUE (user_id, pdf_name), UNIQUE (user_id, content_hash) WHERE content_hash IS NOT NULL
 ```
 
-#### `chunks` — Sentence-aware text chunks
+Two different users may upload a file with the same name or the same content — uniqueness is always scoped to `user_id`. `milvus_synced=FALSE` marks a row whose vectors may be missing/stale; `POST /db/reconcile` (admin) repairs these.
+
+#### `chunks` — sentence-aware text chunks
 
 ```sql
 CREATE TABLE chunks (
     id          SERIAL      PRIMARY KEY,
-    paper_id    INTEGER     NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
+    paper_id    INTEGER     REFERENCES papers(id) ON DELETE CASCADE,
     chunk_text  TEXT        NOT NULL,
     chunk_idx   INTEGER     NOT NULL,
-    chunk_type  TEXT        NOT NULL DEFAULT 'fulltext'
-                            CHECK (chunk_type IN ('title', 'abstract', 'fulltext'))
+    chunk_type  TEXT        DEFAULT 'fulltext'   -- 'title' | 'abstract' | 'fulltext'
 );
 ```
 
-Chunking rules per type:
+Chunking rules per type (`services/chunking_service.py`):
 
 | Type | Strategy | Target Size |
 |---|---|---|
-| `title` | No chunking — stored as-is | — |
-| `abstract` | Sentence-aware, sentence boundary preserved | ≤ 500 chars |
-| `fulltext` | Sentence-aware with overlap | 850 chars, 100 overlap |
+| `title` | Not chunked — stored as-is | — |
+| `abstract` | Sentence-aware, single chunk, cut at a sentence boundary | ≤ 500 chars |
+| `fulltext` | Sentence-aware, **sentence-level** overlap (not character-level), Turkish abbreviations (`Dr.`, `vb.`, `bkz.`, …) excluded from sentence-end detection | 850 chars, 1-sentence overlap |
 
-#### `keywords` — Extracted keywords per paper
+#### `chat_conversations` / `chat_messages` — persistent PDF Chat history
 
 ```sql
-CREATE TABLE keywords (
-    id          SERIAL      PRIMARY KEY,
-    paper_id    INTEGER     NOT NULL REFERENCES papers(id) ON DELETE CASCADE,
-    keyword     TEXT        NOT NULL
+CREATE TABLE chat_conversations (
+    id          SERIAL PRIMARY KEY,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,          -- auto-generated, e.g. "15 Eyl 14:30 — dosya.pdf"
+    pdf_names   JSONB NOT NULL DEFAULT '[]',   -- the PDF scope selected for this conversation
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE chat_messages (
+    id              SERIAL PRIMARY KEY,
+    conversation_id INTEGER NOT NULL REFERENCES chat_conversations(id) ON DELETE CASCADE,
+    role            TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    content         TEXT NOT NULL,
+    sources         JSONB NOT NULL DEFAULT '[]',  -- cited pdf_name/raw_title/score per assistant reply
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
-#### `searches` — Query audit log
+A conversation is created lazily on the **first** message (empty conversations are never persisted), and the LLM's chat history is always re-derived from `chat_messages` server-side — the client never has to (and no longer does) send its own transcript back.
+
+#### Legacy tables (present in the schema, unused by any current code path)
+
+`keywords`, `searches`, `suggestions` were part of an earlier iteration of the project (pre-RAG, pre-auth). They still exist (and are still cleared by `POST /db/reset`), but nothing currently writes to them — kept for backward-compatible migrations rather than active use.
+
+#### Key indexes
 
 ```sql
-CREATE TABLE searches (
-    id          SERIAL      PRIMARY KEY,
-    query_text  TEXT        NOT NULL,
-    searched_at TIMESTAMP   DEFAULT NOW()
-);
-```
-
-#### `suggestions` — LLM-generated suggestion records
-
-```sql
-CREATE TABLE suggestions (
-    id                      SERIAL      PRIMARY KEY,
-    paper_id                INTEGER     REFERENCES papers(id) ON DELETE SET NULL,
-    similarity_analysis     TEXT,
-    original_aspects        TEXT,
-    improvement_suggestions TEXT,
-    topic_suggestions       TEXT,
-    revised_title           TEXT,
-    risk_level              TEXT,
-    created_at              TIMESTAMP   DEFAULT NOW()
-);
-```
-
-#### Indexes
-
-```sql
-CREATE INDEX idx_papers_pdf_name    ON papers(pdf_name);
-CREATE INDEX idx_chunks_paper_id    ON chunks(paper_id);
-CREATE INDEX idx_chunks_type_paper  ON chunks(paper_id, chunk_type);
-CREATE INDEX idx_papers_year        ON papers(year) WHERE year > 0;
-CREATE INDEX idx_keywords_paper_id  ON keywords(paper_id);
-CREATE INDEX idx_suggestions_paper  ON suggestions(paper_id);
+CREATE UNIQUE INDEX idx_papers_user_pdfname   ON papers(user_id, pdf_name);
+CREATE UNIQUE INDEX idx_papers_user_hash      ON papers(user_id, content_hash) WHERE content_hash IS NOT NULL;
+CREATE INDEX        idx_papers_user_id        ON papers(user_id);
+CREATE INDEX        idx_papers_unsynced       ON papers(milvus_synced) WHERE milvus_synced = FALSE;
+CREATE INDEX        idx_chat_conversations_user_updated ON chat_conversations(user_id, updated_at DESC);
+CREATE INDEX        idx_chat_messages_conversation       ON chat_messages(conversation_id, created_at);
 ```
 
 ---
 
 ### Milvus Collections
 
-All collections use **HNSW** index with **COSINE** metric and **384-dimensional** vectors from `paraphrase-multilingual-MiniLM-L12-v2`.
-
-#### `liftup_titles` — One vector per paper (title embedding)
-
-| Field | Type | Description |
-|---|---|---|
-| `id` | INT64 (PK, auto) | Primary key |
-| `pdf_name` | VARCHAR(512) | Source PDF filename |
-| `text` | VARCHAR(1024) | Paper title |
-| `vector` | FLOAT_VECTOR(384) | Title embedding |
-
-#### `liftup_abstracts` — One vector per paper (abstract embedding)
-
-| Field | Type | Description |
-|---|---|---|
-| `id` | INT64 (PK, auto) | Primary key |
-| `pdf_name` | VARCHAR(512) | Source PDF filename |
-| `text` | VARCHAR(4096) | Abstract text (or first chunk) |
-| `vector` | FLOAT_VECTOR(384) | Abstract embedding |
-
-#### `liftup_fulltext` — N vectors per paper (chunk embeddings for RAG)
-
-| Field | Type | Description |
-|---|---|---|
-| `id` | INT64 (PK, auto) | Primary key |
-| `pdf_name` | VARCHAR(512) | Source PDF filename |
-| `chunk_idx` | INT32 | Chunk sequence index |
-| `text` | VARCHAR(2048) | Chunk text |
-| `vector` | FLOAT_VECTOR(384) | Chunk embedding |
-
-#### Index Configuration
+All three collections share the same index configuration and are all filtered by a `user_id` scalar field on every insert/search/delete — there is no cross-user search path anywhere in the codebase.
 
 ```python
 HNSW_INDEX = {
@@ -271,170 +282,152 @@ HNSW_INDEX = {
     "metric_type": "COSINE",
     "params": {"M": 16, "efConstruction": 200},
 }
+# search-time: {"metric_type": "COSINE", "params": {"ef": 128}}
 ```
+
+Vector dimension is **768** (`paraphrase-multilingual-mpnet-base-v2`) — configurable via `EMBEDDING_MODEL`/`EMBEDDING_DIM`, see [Embedding Model Migrations](#embedding-model-migrations).
+
+#### `liftup_titles` — one vector per paper
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | INT64 (PK, auto) | Primary key |
+| `user_id` | INT64 | Owning user |
+| `pdf_name` | VARCHAR(512) | Source PDF filename |
+| `text` | VARCHAR(1024) | Paper title |
+| `vector` | FLOAT_VECTOR(768) | Title embedding |
+
+#### `liftup_abstracts` — one vector per paper
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | INT64 (PK, auto) | Primary key |
+| `user_id` | INT64 | Owning user |
+| `pdf_name` | VARCHAR(512) | Source PDF filename |
+| `text` | VARCHAR(4096) | Abstract text (first chunk) |
+| `vector` | FLOAT_VECTOR(768) | Abstract embedding |
+
+#### `liftup_fulltext` — N vectors per paper (chunk-level, used for both Project Suggestion's fulltext mode and PDF Chat retrieval)
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | INT64 (PK, auto) | Primary key |
+| `user_id` | INT64 | Owning user |
+| `pdf_name` | VARCHAR(512) | Source PDF filename |
+| `chunk_idx` | INT32 | Chunk sequence index |
+| `text` | VARCHAR(2048) | Chunk text |
+| `vector` | FLOAT_VECTOR(768) | Chunk embedding |
+
+The schema bootstrapper (`services/database/init_milvus.py`) detects **both** a field-set change and a vector-dimension change on startup — if either differs from what's expected, the collection is dropped and recreated automatically (data must then be repopulated, see below).
 
 ---
 
-## Similarity Engine
+## Core Modules
 
-The system implements four complementary similarity methods accessible through the **Similarity Search** module:
+### PDF Splitter
 
-### 1. Jaccard Similarity
-
-Token-level set overlap between two documents. Language-agnostic, fast, suitable for keyword-heavy comparisons.
+Splits a multi-paper PDF bundle (e.g., a conference proceedings file) into individual documents using a **font-size threshold**: any text span whose font size is ≥ `font_threshold` is treated as (part of) a section/paper title, and a title change marks a new section boundary.
 
 ```
-Jaccard(A, B) = |A ∩ B| / |A ∪ B|
+POST /pdf/split          multipart/form-data: file, font_threshold (default 22.0)
+POST /pdf/download-section   multipart/form-data: file, start_page, end_page, title
+POST /pdf/preview-section    multipart/form-data: file, start_page, end_page
 ```
 
-where A and B are sets of lowercased tokens after stopword removal.
+### Project Suggestion (Similarity Engine)
 
-### 2. TF-IDF Cosine Similarity
+Three independent search modes, each hitting its own Milvus collection, always filtered to the current user's own documents:
 
-Computes term frequency–inverse document frequency vectors for both documents, then measures the cosine angle between them. Captures vocabulary importance across the corpus.
+| Mode | Collection | Behaviour |
+|---|---|---|
+| `title` | `liftup_titles` | Direct COSINE search, top-k results |
+| `abstract` | `liftup_abstracts` | COSINE search, deduplicated to one hit per paper |
+| `fulltext` | `liftup_fulltext` | Chunk-level search (`top_k × 4` candidates) → **max-pooling** per paper (best-scoring chunk represents the paper) → RAG analysis |
 
-```
-sim(A, B) = (TF-IDF(A) · TF-IDF(B)) / (‖TF-IDF(A)‖ · ‖TF-IDF(B)‖)
-```
+Every mode ends with an LLM call (`services/llm/llm_suggestion_service.py`) that returns structured JSON: `field`, `risk_level`, an analysis of why the input resembles existing work, concrete `topic_suggestions` with novelty scores, and a `revised_title`.
 
-Implemented via `scikit-learn TfidfVectorizer` with Turkish-aware preprocessing.
-
-### 3. Cosine Similarity (raw vectors)
-
-Direct cosine distance between frequency or embedding vectors without IDF weighting. Used as a lightweight baseline.
-
-### 4. Sentence-BERT Semantic Similarity
-
-The primary method for all three suggestion modes. Uses `paraphrase-multilingual-MiniLM-L12-v2` to produce dense 384-dimensional embeddings that capture **semantic meaning** rather than lexical overlap.
-
-```
-sim(A, B) = embed(A) · embed(B)        # vectors are L2-normalized
-```
-
-Vectors are stored in Milvus and searched via HNSW approximate nearest-neighbour retrieval with `ef=128`.
-
-**Similarity thresholds used in the suggestion system:**
+**Similarity thresholds used to select "high similarity" evidence for the LLM:**
 
 | Level | Score | Behaviour |
 |---|---|---|
-| High | ≥ 80% | LLM suggestion is always triggered; red badge |
-| Medium | 50–79% | Warning badge; LLM may suggest improvements |
-| Low | < 50% | Green badge; considered sufficiently original |
+| High | ≥ 80% | Always included as LLM evidence |
+| Medium/Low | < 80% | Only used if fewer than 3–4 high matches exist |
+
+### PDF Chat (RAG)
+
+A ChatGPT-style chat interface over the user's own document library:
+
+- **Scope**: no PDF selected → search across the user's entire library; one or more PDFs selected → search restricted to those documents only (`liftup_fulltext`, filtered by `user_id` **and** `pdf_name IN (...)`).
+- **Retrieval**: the question is embedded and matched against chunk vectors; matched chunk text (not the LLM's own knowledge) is what's fed back as context, with the system prompt instructing the model to say so explicitly when the context doesn't contain an answer.
+- **Persistence**: every conversation, once it has at least one message, is stored in `chat_conversations`/`chat_messages` (see schema above). The frontend keeps the active conversation id in `localStorage` and reloads it from the server on mount/remount — a page reload or component remount no longer loses the conversation.
+- **History UI**: a sidebar lists past conversations (auto-titled `"<date> <time> — <first selected PDF or 'Genel Sohbet'>"`), supports switching between them (restoring both messages and the PDF scope that conversation was created with) and deleting them.
+
+```
+POST   /chat/message                     { message, pdf_names[], conversation_id? } → { reply, sources, conversation_id, title? }
+GET    /chat/conversations               → { conversations: [{id, title, updated_at}] }
+GET    /chat/conversations/{id}          → { id, title, pdf_names, messages[] }
+DELETE /chat/conversations/{id}
+```
 
 ---
 
-## PDF Splitter
+## LLM Integration (OpenRouter)
 
-The PDF Splitter module automatically extracts individual academic papers from compiled proceeding PDF files (e.g., conference books containing 50+ papers in a single file).
+All LLM calls (Project Suggestion's text/RAG analysis, and PDF Chat) go through a single shared client, `services/llm/openrouter_client.py`, hitting OpenRouter's OpenAI-compatible `/chat/completions` endpoint (`meta-llama/llama-3.1-8b-instruct` by default — any OpenRouter-hosted model can be swapped in via `OPENROUTER_MODEL`).
 
-### How It Works
-
-1. **Page-level feature extraction** — Each page is analysed for structural signals: font size variance, blank-line density, header patterns, keyword presence (`abstract`, `introduction`, `references`, `özet`, `giriş`).
-2. **Threshold scoring** — A configurable threshold (0.0–1.0) controls sensitivity. Higher values require stronger structural evidence before a page split is accepted.
-3. **Boundary detection** — Pages crossing the threshold are marked as paper start boundaries.
-4. **Extraction** — Each detected segment is exported as a standalone PDF file.
-
-### Configuration
-
-| Parameter | Default | Description |
-|---|---|---|
-| `threshold` | `0.5` | Split sensitivity (0 = split aggressively, 1 = rarely split) |
-| `min_pages` | `2` | Minimum pages for a valid paper segment |
-| `max_pages` | `40` | Maximum pages before a forced split |
-
-### Endpoint
-
-```
-POST /split/pdf
-Content-Type: multipart/form-data
-
-file      : PDF file (required)
-threshold : float 0.0–1.0 (default 0.5)
-```
-
-Returns a ZIP archive containing individual paper PDFs, each named by detected title or page range.
-
----
-
-## RAG Pipeline
-
-The Retrieval-Augmented Generation pipeline is activated when a user uploads a PDF or enters full-text in the suggestion module.
-
-```
-User PDF / Full Text
-        │
-        ▼
-  BERT Embedding
-  (paraphrase-multilingual-MiniLM-L12-v2)
-        │
-        ▼
-  Milvus HNSW Search
-  (liftup_fulltext — chunk level, top_k × 4)
-        │
-        ▼
-  Max-Pooling per Paper
-  (highest chunk score represents the paper)
-        │
-        ▼
-  PostgreSQL Enrichment
-  (book_name, year, raw_title via pg_get_paper)
-        │
-        ▼
-  RAG Context Builder
-  (top matched chunks + pg chunk retrieval for top-3 papers)
-        │
-        ▼
-  Ollama — Llama 3.1 8B Q4 (GPU)
-  Prompt: pdf_full_text + matched chunks + similar titles
-        │
-        ▼
-  Structured JSON Response
-  {field, risk_level, similarity_analysis,
-   original_aspects, improvement_suggestions,
-   topic_suggestions, revised_title}
-```
+- **Retry with backoff**: transient failures (network errors, timeouts, HTTP 429, 5xx) are retried up to 3 times with 1s/3s backoff. Non-retryable errors (401, 400, …) fail immediately.
+- **Context length guard**: in RAG mode, the uploaded PDF's full text is capped at 16,000 characters, and each cited "similar project" source is capped at 2,500 characters of actual (un-truncated) chunk evidence — bounding both cost and the risk of exceeding the model's context window.
+- **RAG evidence, not UI snippets**: the LLM receives the *full* matched chunk text (deduplicated across Milvus's top hit + PostgreSQL's per-paper chunks), not the 200-character snippet shown in the UI's result cards — those are two intentionally separate fields (`rag_chunks` vs. `matched_text`).
+- **No local GPU required.** The embedding model still runs locally (CPU by default), but the generative model is entirely cloud-hosted — set `OPENROUTER_API_KEY` and you're done.
 
 ---
 
 ## Project Structure
 
 ```
-BM498/
+bm498/
 ├── backend/
-│   ├── main.py
+│   ├── main.py                          # App startup, router registration, health checks
+│   ├── migrations/                      # Alembic migrations (baseline → users → per-user scoping → chat)
+│   ├── scripts/
+│   │   └── reembed_all.py               # One-off: re-embed all users' papers after an EMBEDDING_MODEL change
 │   ├── routers/
-│   │   ├── database_router.py       # Paper CRUD, Milvus sync
-│   │   ├── similarity_router.py     # Jaccard, TF-IDF, BERT comparison
-│   │   ├── pdf_router.py            # PDF splitting
-│   │   └── suggest_router.py        # Suggestion system entry point
+│   │   ├── auth_router.py               # /auth — register/login/logout/me
+│   │   ├── chat_router.py               # /chat — PDF Chat + conversation CRUD
+│   │   ├── database_router.py           # /db — paper CRUD, Postgres⇄Milvus sync, admin reconcile/reset
+│   │   ├── pdf_router.py                # /pdf — font-threshold PDF splitting
+│   │   └── suggest_router.py            # /suggest — title/abstract/fulltext search + health
 │   └── services/
-│       ├── text_preprocessing.py    # PDF text extraction (fitz)
-│       ├── chunking_service.py      # Sentence-aware chunking
-│       ├── comparison_service.py    # Jaccard / TF-IDF / cosine
-│       ├── highlight_service.py     # Matched text highlighting
-│       ├── pdf_splitter.py          # Threshold-based PDF splitting
-│       ├── suggest_service.py       # Search pipeline (title/abstract/fulltext)
+│       ├── auth.py, security.py         # JWT dependency, password hashing, token issuing
+│       ├── config.py                    # ALL env-derived settings, single source of truth
+│       ├── rate_limit.py                # In-memory sliding-window limiter
+│       ├── upload_validation.py         # PDF magic-byte/size checks
+│       ├── text_preprocessing.py        # PDF text/title/abstract extraction (fitz)
+│       ├── chunking_service.py          # Sentence-aware chunking (Turkish-aware)
+│       ├── pdf_splitter.py              # Font-size-threshold splitting
+│       ├── suggest_service.py           # title/abstract/fulltext search pipelines
+│       ├── chat_service.py              # PDF Chat RAG orchestration
 │       ├── database/
-│       │   ├── postgres_service.py  # Async PostgreSQL CRUD
-│       │   ├── milvus_service.py    # Milvus insert / search / delete
-│       │   └── init_milvus.py       # Collection schema bootstrap
+│       │   ├── postgres_service.py      # Async PostgreSQL CRUD (users, papers, chunks, chat)
+│       │   ├── milvus_service.py        # Milvus insert / search / delete
+│       │   └── init_milvus.py           # Collection schema bootstrap (dim-change aware)
 │       └── llm/
-│           └── llm_suggestion_service.py  # Ollama / Llama 3.1 Q4
+│           ├── openrouter_client.py     # Shared OpenRouter client — retry/backoff
+│           ├── llm_suggestion_service.py# Project Suggestion prompts (text + RAG modes)
+│           └── chat_llm_service.py      # PDF Chat prompt/response
 │
 └── frontend/
-    ├── public/
+    ├── services/
+    │   └── service.js                   # All backend API calls (axios, withCredentials)
     └── src/
-        ├── App.jsx
-        ├── pages/
-        │   ├── Home/
-        │   ├── PdfSplitter/
-        │   ├── Similarity/
-        │   ├── Suggest/
-        │   │   ├── Suggest.jsx
-        │   │   └── Suggest.css
-        │   └── Database/
-        └── services/
-            └── service.js
+        ├── App.jsx, AuthContext.jsx, ProtectedRoute.jsx
+        └── pages/
+            ├── Auth/                    # Login/register
+            ├── Home/
+            ├── PdfSplitter/
+            ├── Suggest/                 # Project Suggestion UI
+            ├── Chat/                    # PDF Chat UI + history sidebar
+            └── Database/                # Library management
 ```
 
 ---
@@ -443,11 +436,11 @@ BM498/
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.10+
 - Node.js 20+
 - PostgreSQL 16
-- [Milvus 2.4](https://milvus.io/docs/install_standalone-docker.md) (Docker recommended)
-- [Ollama](https://ollama.com/download)
+- [Milvus 2.4+](https://milvus.io/docs/install_standalone-docker.md) (Docker recommended)
+- An [OpenRouter](https://openrouter.ai/keys) API key (no local GPU/LLM server needed)
 
 ### 1. Clone the Repository
 
@@ -460,34 +453,23 @@ cd semantic_similarity_recommender
 
 ```bash
 cd backend
-python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+python -m venv ../venv
+../venv/Scripts/activate        # Linux/Mac: source ../venv/bin/activate
 
 pip install -r requirements.txt
-```
-
-**`requirements.txt`**
-```
-fastapi==0.111.*
-uvicorn[standard]==0.30.*
-asyncpg==0.29.*
-pymilvus==2.4.*
-sentence-transformers==3.0.*
-pymupdf==1.24.*
-scikit-learn==1.5.*
-python-multipart==0.0.9
-httpx==0.27.*
-pydantic==2.7.*
 ```
 
 ### 3. PostgreSQL Setup
 
 ```bash
 psql -U postgres -c "CREATE DATABASE liftup_db;"
-psql -U postgres -d liftup_db -f schema.sql
 ```
 
-**`schema.sql`** — run the full schema from the [Database Schemas](#postgresql-schema) section above.
+Then apply migrations (creates `users`, `papers`, `chunks`, `chat_conversations`, `chat_messages`, and legacy tables in order):
+
+```bash
+alembic upgrade head
+```
 
 ### 4. Milvus Setup
 
@@ -496,20 +478,16 @@ psql -U postgres -d liftup_db -f schema.sql
 wget https://github.com/milvus-io/milvus/releases/download/v2.4.0/milvus-standalone-docker-compose.yml \
      -O docker-compose.yml
 docker compose up -d
-
-# Create collections
-cd backend
-python services/database/init_milvus.py
 ```
 
-### 5. Ollama + LLM Setup
+Collections are created automatically on backend startup (`services/database/init_milvus.py`) — no separate step needed.
+
+### 5. Configure Environment
 
 ```bash
-# Install Ollama (Linux)
-curl -fsSL https://ollama.com/install.sh | sh
-
-# Pull the model
-ollama pull llama3.1:8b-instruct-q4_K_M
+cp backend/.env.example backend/.env
+# fill in DATABASE_URL, JWT_SECRET (python -c "import secrets; print(secrets.token_hex(32))"),
+# OPENROUTER_API_KEY, ADMIN_EMAILS, etc. — see Environment Variables below
 ```
 
 ### 6. Frontend Setup
@@ -527,16 +505,6 @@ npm install
 
 ```bash
 cd backend
-
-# Standard
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-
-# With GPU-accelerated Ollama (Linux/Mac)
-OLLAMA_GPU_LAYERS=99 ollama serve &
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-
-# Windows CMD
-start /b cmd /c "set OLLAMA_GPU_LAYERS=99 && ollama serve"
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
@@ -548,43 +516,55 @@ npm run dev
 # Runs at http://localhost:5173
 ```
 
-### Register the Suggest Router in `main.py`
+Router registration (already wired in `main.py`, shown here for reference):
 
 ```python
-from fastapi import FastAPI
-from routers.database_router  import router as database_router
-from routers.similarity_router import router as similarity_router
-from routers.pdf_router        import router as pdf_router
-from routers.suggest_router    import router as suggest_router
-
-app = FastAPI(title="AltayAI", version="1.0.0")
-
-app.include_router(database_router,  prefix="/database")
-app.include_router(similarity_router, prefix="/search")
-app.include_router(pdf_router,        prefix="/split")
-app.include_router(suggest_router,    prefix="/suggest")
+app.include_router(auth_router,     prefix="/auth")
+app.include_router(database_router, prefix="/db",      dependencies=[Depends(get_current_user)])
+app.include_router(chat_router,     prefix="/chat",    dependencies=[Depends(get_current_user)])
+app.include_router(pdf_router,      prefix="/pdf",     dependencies=[Depends(get_current_user)])
+app.include_router(suggest_router,  prefix="/suggest", dependencies=[Depends(get_current_user)])
 ```
+
+---
+
+## Embedding Model Migrations
+
+Changing `EMBEDDING_MODEL` (or its dimension) is **not** a config-only change — every existing vector was produced by the old model and lives in an incompatible vector space. After changing the env var:
+
+1. Restarting the backend alone is not enough — `scripts/reembed_all.py` must be run once:
+   ```bash
+   cd backend
+   ../venv/Scripts/python.exe scripts/reembed_all.py
+   ```
+2. The script re-embeds every user's papers from text **already stored in PostgreSQL** (no need to re-upload PDFs), drops and recreates all three Milvus collections at the new dimension, and re-inserts everything.
+3. Search/chat return empty/degraded results for the (typically short) duration of this script.
+
+If the new model isn't in the local HuggingFace cache yet, run once with `HF_HUB_OFFLINE=0` to let it download (the app forces `HF_HUB_OFFLINE=1` by default afterward to avoid a network round-trip on every embedding call).
 
 ---
 
 ## API Reference
 
-### Suggestion System
+### Auth (`/auth`)
 
-#### `POST /suggest/search`
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/auth/register` | `{email, first_name, last_name, phone, password, password_confirm}` |
+| `POST` | `/auth/login` | `{email, password}` → sets session cookie |
+| `POST` | `/auth/logout` | Clears session cookie |
+| `GET` | `/auth/me` | Current user info |
 
-Runs the full suggestion pipeline for the selected search mode.
+### Project Suggestion (`/suggest`)
 
-**Request** — `multipart/form-data`
+#### `POST /suggest/search` — `multipart/form-data`
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `search_type` | `string` | ✅ | `"title"` \| `"abstract"` \| `"fulltext"` |
-| `query_text` | `string` | ⚠️ | Input text (required if no file) |
-| `top_k` | `integer` | ❌ | Number of results (default: `12`) |
+| `query_text` | `string` | ⚠️ | Input text (required unless a file is given in fulltext mode) |
+| `top_k` | `integer` | ❌ | Number of results (default `12`) |
 | `file` | `File` | ⚠️ | PDF file — fulltext mode only |
-
-**Response**
 
 ```jsonc
 {
@@ -598,97 +578,101 @@ Runs the full suggestion pipeline for the selected search mode.
       "raw_title": "Deep Learning for Medical Image Segmentation",
       "book_name": "BM498-2024",
       "year": 2024,
-      "matched_text": "In this study, a U-Net based architecture..."
+      "matched_text": "In this study, a U-Net based architecture..."   // short UI snippet, ≤200 chars
     }
   ],
   "llm_suggestion": {
-    // text mode
-    "mode": "text",
+    "mode": "rag",              // "text" for title/abstract mode
     "success": true,
     "field": "Computer Vision",
     "risk_level": "yüksek",
-    "analysis": "The submitted work closely resembles...",
-    "topic_suggestions": [
-      { "title": "...", "rationale": "...", "novelty_score": 88 }
-    ],
+    "similarity_analysis": "...",
+    "original_aspects": ["..."],
+    "improvement_suggestions": ["..."],
+    "topic_suggestions": [{ "title": "...", "rationale": "...", "novelty_score": 88 }],
     "revised_title": "..."
   }
 }
 ```
 
-```jsonc
-{
-  "llm_suggestion": {
-    // RAG mode (fulltext / PDF)
-    "mode": "rag",
-    "success": true,
-    "field": "Natural Language Processing",
-    "risk_level": "orta",
-    "similarity_analysis": "The uploaded paper shares the transformer-based...",
-    "original_aspects": ["Novel dataset construction...", "..."],
-    "improvement_suggestions": ["Consider adding ablation...", "..."],
-    "topic_suggestions": [...],
-    "revised_title": "..."
-  }
-}
-```
+`GET /suggest/health` → `{ "status": "ok", "model_ok": true, "openrouter_ok": true }`
 
-#### `GET /suggest/health`
+### PDF Chat (`/chat`)
 
-```jsonc
-{ "status": "ok", "model_ok": true, "ollama_ok": true }
-```
+See [PDF Chat (RAG)](#pdf-chat-rag) above for the full endpoint list and behaviour.
 
-### Database
+### Database (`/db`)
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/database/add` | Upload and index a PDF |
-| `GET` | `/database/list` | List all indexed papers |
-| `GET` | `/database/detail/{pdf_name}` | Paper metadata + chunks |
-| `GET` | `/database/preview/{pdf_name}` | Stream PDF for in-browser preview |
-| `DELETE` | `/database/remove/{pdf_name}` | Delete from PostgreSQL + Milvus + disk |
-| `GET` | `/database/stats` | Collection counts (PostgreSQL + Milvus) |
-| `POST` | `/database/reset` | Full database wipe |
+| `POST` | `/db/add` | Upload + index a PDF (`file`, `book_name`, `year`, `force_update`) |
+| `GET` | `/db/list` | List the current user's indexed papers |
+| `GET` | `/db/detail/{pdf_name}` | Paper metadata + chunks |
+| `GET` | `/db/preview/{pdf_name}` | Stream the stored PDF for in-browser preview |
+| `DELETE` | `/db/remove/{pdf_name}` | Delete from PostgreSQL + Milvus + disk |
+| `GET` | `/db/stats` | Per-user collection counts (PostgreSQL + Milvus) |
+| `POST` | `/db/reconcile` | *(admin)* Repair PG⇄Milvus drift across all users |
+| `POST` | `/db/reset` | *(admin)* Full data wipe (users table excluded) |
 
-### Similarity
-
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/search/compare` | Compare two texts (Jaccard / TF-IDF / BERT) |
-| `POST` | `/search/query` | Search similar papers by query text |
-
-### PDF Splitter
+### PDF Splitter (`/pdf`)
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/split/pdf` | Split a multi-paper PDF by threshold |
+| `POST` | `/pdf/split` | Split a multi-paper PDF by font-size threshold |
+| `POST` | `/pdf/download-section` | Download a page range as a standalone PDF |
+| `POST` | `/pdf/preview-section` | Preview a page range |
 
 ---
 
 ## Environment Variables
 
-Create a `.env` file in `backend/`:
+`backend/.env` (see `backend/.env.example` for the authoritative, up-to-date list):
 
 ```env
-# PostgreSQL
-DATABASE_URL=postgresql://postgres:your_password@localhost:5432/liftup_db
+# PostgreSQL — REQUIRED, no default
+DATABASE_URL=postgresql://user:password@localhost:5432/liftup_db
 
 # Milvus
 MILVUS_HOST=localhost
 MILVUS_PORT=19530
 MILVUS_DB=liftup_db
 
-# Ollama
-OLLAMA_BASE_URL=http://127.0.0.1:11434
-LLM_MODEL=llama3.1:8b-instruct-q4_K_M
-LLM_TIMEOUT_SEC=300
+# Embedding model — changing this requires scripts/reembed_all.py (see above)
+EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-mpnet-base-v2
+EMBEDDING_DIM=768
 
-# Storage
+# OpenRouter (LLM) — https://openrouter.ai/keys — REQUIRED for LLM features
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=meta-llama/llama-3.1-8b-instruct
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+
+# CORS — comma-separated allowed origins (defaults to localhost:5173 if unset)
+CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+
+# Optional service API key for destructive admin endpoints via automation
+# (real admin access is via ADMIN_EMAILS + a logged-in session)
+ADMIN_API_KEY=
+
+# JWT sessions — REQUIRED, backend refuses to start without it
+# generate with: python -c "import secrets; print(secrets.token_hex(32))"
+JWT_SECRET=
+JWT_EXPIRE_MINUTES=10080
+
+# Comma-separated emails that get the 'admin' role automatically on registration
+ADMIN_EMAILS=admin@example.com
+
+# true only behind HTTPS in production
+COOKIE_SECURE=false
+
+# Upload / rate limits
+MAX_UPLOAD_MB=30
+RATE_LIMIT_PER_MINUTE=20
+
+# Disk storage for uploaded PDFs (per-user subdirectories)
 PDF_STORAGE_DIR=storage/pdfs
 ```
 
-Frontend `.env` (`frontend/.env`):
+`frontend/.env`:
 
 ```env
 VITE_API_URL=http://localhost:8000
@@ -696,12 +680,16 @@ VITE_API_URL=http://localhost:8000
 
 ---
 
-## Notes
+## Known Limitations
 
-- The LLM runs **fully locally** — no OpenAI API key or internet connection is required after model download.
-- GPU acceleration for Ollama is automatic on Windows with NVIDIA drivers. On Linux, set `OLLAMA_GPU_LAYERS=99` before starting `ollama serve`.
-- Milvus stores only vectors. All raw text and metadata live in PostgreSQL, keeping the vector index lean.
-- The suggestion system's frontend timeout is **300 seconds** to accommodate RAG + LLM processing time on consumer hardware.
+Tracked honestly so they're not mistaken for oversights:
+
+- **No automated test suite / CI pipeline.** All verification is manual.
+- **No reranking or hybrid (keyword + vector) search** — retrieval is single-stage dense/HNSW only.
+- **No response streaming** — both Project Suggestion and PDF Chat wait for the full LLM response before returning anything to the client.
+- **No token/cost usage tracking** for OpenRouter calls beyond the per-minute request rate limiter.
+- **No section-aware chunking** — a paper's references/bibliography are not stripped before chunking/embedding, and chunks aren't tagged with which section (Introduction, Methods, …) they came from.
+- **Single-process rate limiting** — the in-memory limiter does not coordinate across multiple backend workers/instances; a Redis-backed limiter would be needed for horizontal scaling.
 
 ---
 

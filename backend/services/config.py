@@ -12,8 +12,8 @@ from __future__ import annotations
 import os
 
 # ── HuggingFace Hub ──────────────────────────────────────────────
-# Gömme modeli (paraphrase-multilingual-MiniLM-L12-v2) ilk çalıştırmada
-# indirilip yerel önbelleğe alınır. Varsayılan olarak offline moda
+# Gömme modeli (aşağıdaki EMBEDDING_MODEL) ilk çalıştırmada indirilip
+# yerel önbelleğe alınır. Varsayılan olarak offline moda
 # zorlanır — aksi halde sentence-transformers her istekte HuggingFace
 # Hub'a HEAD/GET istekleri atarak gereksiz gecikme ekler (LLM'e giden
 # isteklerden hemen önce görülen huggingface.co logları buradan gelir).
