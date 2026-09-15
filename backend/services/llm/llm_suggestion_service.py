@@ -22,15 +22,20 @@ Dönen sözlük Suggest.jsx LLMPanel bileşeniyle birebir uyumludur:
   topic_suggestions, revised_title
 """
 
-import json
 import logging
-import urllib.request
 import urllib.error
 from typing import List, Dict, Any
 
-from services.config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
+from services.config import OPENROUTER_MODEL
+from services.llm.openrouter_client import call_openrouter, openrouter_available
 
 logger = logging.getLogger(__name__)
+
+# RAG modunda PDF tam metnine uygulanan üst sınır — OpenRouter'a gönderilen
+# context boyutunu (ve dolayısıyla maliyeti/hata riskini) sınırlar. ~16000
+# karakter, Llama 3.1'in context penceresinde rahat yer bulan, yine de akademik
+# bir PDF'in büyük kısmını kapsayan makul bir üst sınırdır.
+MAX_RAG_PDF_CHARS = 16_000
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -38,38 +43,20 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────────
 
 def _openrouter_available() -> bool:
-    """OPENROUTER_API_KEY .env'de ayarlanmış mı kontrol eder."""
-    return bool(OPENROUTER_API_KEY)
+    return openrouter_available()
 
 
 def _call_openrouter(system: str, user: str, max_tokens: int = 1800) -> str:
-    """OpenRouter /chat/completions endpoint'ini çağırır (OpenAI-uyumlu)."""
-    if not OPENROUTER_API_KEY:
-        raise RuntimeError("OPENROUTER_API_KEY ayarlanmamış")
-
-    payload = json.dumps({
-        "model": OPENROUTER_MODEL,
-        "messages": [
+    return call_openrouter(
+        messages=[
             {"role": "system", "content": system},
             {"role": "user",   "content": user},
         ],
-        "temperature": 0.75,
-        "top_p":       0.92,
-        "max_tokens":  max_tokens,
-    }).encode("utf-8")
-
-    req = urllib.request.Request(
-        f"{OPENROUTER_BASE_URL}/chat/completions",
-        data=payload,
-        headers={
-            "Content-Type":  "application/json",
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        },
-        method="POST",
+        max_tokens=max_tokens,
+        temperature=0.75,
+        top_p=0.92,
+        timeout=300,  # 5 dakika
     )
-    with urllib.request.urlopen(req, timeout=300) as resp:  # 5 dakika
-        data = json.loads(resp.read().decode("utf-8"))
-        return data["choices"][0]["message"]["content"].strip()
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -234,7 +221,15 @@ def _build_rag_messages(
     pdf_title: str,
     similar  : List[Dict],
 ):
-    # Tüm PDF metni ve matched_text'lerin tamamı gönderilir — karakter kısıtı yok
+    # PDF metni MAX_RAG_PDF_CHARS ile sınırlanır — aksi halde büyük PDF'lerde
+    # OpenRouter context penceresi zorlanır ve maliyet öngörülemez hale gelir.
+    if len(pdf_text) > MAX_RAG_PDF_CHARS:
+        logger.info(
+            "[LLM] RAG PDF metni kısaltıldı: %d → %d karakter",
+            len(pdf_text), MAX_RAG_PDF_CHARS,
+        )
+        pdf_text = pdf_text[:MAX_RAG_PDF_CHARS] + "\n\n[…belge bu noktadan sonra kısaltıldı…]"
+
     context_blocks = []
     for i, p in enumerate(similar[:4]):
         matched = p.get("matched_text") or ""
