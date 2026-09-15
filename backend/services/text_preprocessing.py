@@ -157,10 +157,22 @@ _SECTION_KEYWORDS_RE = re.compile(
     r"sonuç|conclusion|"
     r"kaynak(?:ça)?|referanslar|references?|bibliography|"
     r"teşekkür|acknowledge?ments?|"
-    r"ekler?|appendix)\b"
+    r"ek(?:ler)?|appendix)\b"                                  # "Ek A", "Ekler", "Appendix B"
     r")",
     re.IGNORECASE,
 )
+
+# IEEE/mühendislik tarzı makalelerde çok yaygın: Roma rakamıyla numaralanmış
+# bölümler ("I. INTRODUCTION", "II. METHODOLOGY") ve tek büyük harfle
+# numaralanmış alt bölümler ("A. Dataset", "B. Model Architecture").
+# Tek harf kalıbı ("A.", "B.") atıf/kısaltmalarla ("A. Yılmaz'ın çalışması")
+# karışabileceğinden — arap rakamlı/anahtar-kelimeli kalıpların aksine —
+# SALT regex'e güvenilmez; _heading_level() bunun için ayrıca kalın/büyük
+# font şartı arar (bkz. aşağısı).
+_ROMAN_HEADING_RE  = re.compile(r"^([IVXLCDM]{1,6})\.\s+\S")
+_LETTER_HEADING_RE = re.compile(r"^([A-Z])\.\s+\S")
+_VALID_ROMAN_RE    = re.compile(r"^M{0,4}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$")
+
 _HEADING_MAX_LEN = 140
 
 # İçindekiler (Table of Contents) satırları genelde "1.1 Yöntem . . . 12"
@@ -203,6 +215,18 @@ def _heading_level(text: str, size: float, bold: bool, body_size: float) -> int:
         return 1 if depth == 1 else 2
     if _SECTION_KEYWORDS_RE.match(text):
         return 1
+
+    # Roma rakamı ("I. INTRODUCTION") ve tek harf ("A. Dataset") kalıpları —
+    # atıf/kısaltmalarla karışma riski nedeniyle SADECE kalın/büyük font
+    # sinyaliyle BİRLİKTE kabul edilir, arap rakamı/anahtar-kelime gibi
+    # tek başına regex'e güvenilmez.
+    if bold or size >= body_size * 1.1:
+        roman = _ROMAN_HEADING_RE.match(text)
+        if roman and _VALID_ROMAN_RE.match(roman.group(1)):
+            return 1  # "I.", "II.", "III." → bölüm
+        if _LETTER_HEADING_RE.match(text):
+            return 2  # "A.", "B.", "C." → alt bölüm (IEEE kuralı: harfler bölüm altına girer)
+
     if size >= body_size * 1.4:
         return 1
     if bold and size >= body_size * 1.1:
