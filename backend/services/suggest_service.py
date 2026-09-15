@@ -252,10 +252,15 @@ async def run_fulltext_search(
             best_by_pdf[pdf_name] = h
 
     # ── 3. Sonuç listesi ─────────────────────────────────────────
+    # matched_text: SADECE UI'daki kısa alıntı için (bkz. Suggest.jsx
+    # sug-rcard__snippet) — 200 karaktere kesilir, kasıtlı.
+    # rag_chunks: LLM'e giden GERÇEK kanıt — kesilmeden, chunk bazında tutulur.
     results: List[Dict] = []
     for pdf_name, h in best_by_pdf.items():
-        item = _normalize_hit(h, matched_text=_snippet(h.get("text", "")))
-        item["raw_title"] = ""   # _enrich_pg dolduracak
+        full_chunk = h.get("text", "")
+        item = _normalize_hit(h, matched_text=_snippet(full_chunk))
+        item["raw_title"]  = ""   # _enrich_pg dolduracak
+        item["rag_chunks"] = [full_chunk] if full_chunk else []
         results.append(item)
 
     results.sort(key=lambda x: x["score"], reverse=True)
@@ -267,11 +272,15 @@ async def run_fulltext_search(
     # 4a) Milvus ham chunk'ları — semantik olarak en alakalı
     for h in raw_hits[:RAG_MILVUS_CHUNK_LIMIT]:
         pname = h.get("pdf_name", "")
-        # matched_text henüz boşsa ham chunk snippet'i kullan
+        text  = h.get("text", "")
         for r in results:
-            if r["pdf_name"] == pname and not r.get("matched_text"):
-                r["matched_text"] = _snippet(h.get("text", ""))
-                break
+            if r["pdf_name"] != pname:
+                continue
+            if not r.get("matched_text"):
+                r["matched_text"] = _snippet(text)
+            if text and text not in r["rag_chunks"]:
+                r["rag_chunks"].append(text)
+            break
 
     # 4b) PostgreSQL'den üst N paperin tam chunk'ları
     #     Milvus'un göremediği bağlamsal bilgiyi tamamlar
@@ -287,11 +296,11 @@ async def run_fulltext_search(
             if not r.get("matched_text") and pg_chunks:
                 r["matched_text"] = _snippet(pg_chunks[0].get("chunk_text", ""))
 
-            # PG chunk'larını result'a ekle (LLM context için)
-            r["pg_chunks"] = [
-                c.get("chunk_text", "")
-                for c in pg_chunks[:RAG_PG_CHUNKS_PER_PAPER]
-            ]
+            # Tam (kesilmemiş) PG chunk'larını RAG kanıtına ekle — dedup'lu
+            for c in pg_chunks[:RAG_PG_CHUNKS_PER_PAPER]:
+                text = c.get("chunk_text", "")
+                if text and text not in r["rag_chunks"]:
+                    r["rag_chunks"].append(text)
         except Exception as exc:
             logger.warning(
                 "[Suggest/fulltext] PG chunk çekme hatası — %s: %s",

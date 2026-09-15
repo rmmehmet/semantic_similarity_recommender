@@ -22,6 +22,7 @@ Dönen sözlük Suggest.jsx LLMPanel bileşeniyle birebir uyumludur:
   topic_suggestions, revised_title
 """
 
+import json
 import logging
 import urllib.error
 from typing import List, Dict, Any
@@ -36,6 +37,11 @@ logger = logging.getLogger(__name__)
 # karakter, Llama 3.1'in context penceresinde rahat yer bulan, yine de akademik
 # bir PDF'in büyük kısmını kapsayan makul bir üst sınırdır.
 MAX_RAG_PDF_CHARS = 16_000
+
+# Her bir "benzer proje" kaynağı için LLM'e giden birleşik (Milvus + PG)
+# chunk metninin üst sınırı — kaynak başına ~3 chunk'lık kanıt sağlar,
+# 4 kaynakla toplamda makul bir prompt boyutunda kalır.
+MAX_SOURCE_CONTEXT_CHARS = 2_500
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -232,12 +238,18 @@ def _build_rag_messages(
 
     context_blocks = []
     for i, p in enumerate(similar[:4]):
-        matched = p.get("matched_text") or ""
+        # rag_chunks: suggest_service.py'nin Milvus + PostgreSQL'den topladığı,
+        # KESİLMEMİŞ chunk'lar — asıl RAG kanıtı budur. matched_text sadece
+        # UI'daki kısa alıntı için 200 karaktere kesilmiştir, LLM'e değil
+        # kullanıcıya gösterilir; burada kullanılmaz. rag_chunks yoksa
+        # (örn. eski bir çağıran) matched_text'e geri düşülür.
+        chunks  = p.get("rag_chunks") or ([p["matched_text"]] if p.get("matched_text") else [])
+        content = "\n···\n".join(c for c in chunks if c)[:MAX_SOURCE_CONTEXT_CHARS] or "— içerik yok —"
         context_blocks.append(
             f'[Kaynak {i+1}] '
             f'"{p.get("raw_title") or p.get("pdf_name","?")}"\n'
             f'Benzerlik: %{round(p.get("score", 0) * 100, 1)}\n'
-            f'İçerik: {matched}'
+            f'İçerik: {content}'
         )
     context = "\n\n".join(context_blocks) if context_blocks else "— bağlam yok —"
 
