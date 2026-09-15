@@ -12,12 +12,14 @@ from pymilvus import (
     utility,
 )
 
+from services.config import EMBEDDING_DIM
+
 logger = logging.getLogger(__name__)
 
 MILVUS_HOST = os.getenv("MILVUS_HOST", "localhost")
 MILVUS_PORT = int(os.getenv("MILVUS_PORT", "19530"))
 MILVUS_DB   = os.getenv("MILVUS_DB",   "liftup_db")
-DIM         = 384  # paraphrase-multilingual-MiniLM-L12-v2 çıktı boyutu
+DIM         = EMBEDDING_DIM  # bkz. services/config.py — embedding modeliyle birlikte değişir
 
 HNSW_INDEX = {
     "index_type":  "HNSW",
@@ -87,24 +89,34 @@ def _ensure_collection(
     desc: str,
 ) -> Collection:
     expected_field_names = {f.name for f in fields}
+    expected_dim = next(
+        (f.params.get("dim") for f in fields if f.dtype == DataType.FLOAT_VECTOR), None
+    )
 
     if utility.has_collection(name):
         existing = Collection(name)
         existing_field_names = {f.name for f in existing.schema.fields}
-        if existing_field_names == expected_field_names:
+        existing_dim = next(
+            (f.params.get("dim") for f in existing.schema.fields if f.dtype == DataType.FLOAT_VECTOR),
+            None,
+        )
+        if existing_field_names == expected_field_names and existing_dim == expected_dim:
             logger.info("%s: zaten var, yükleniyor.", name)
             existing.load()
             return existing
 
-        # Şema değişmiş (örn. user_id alanı eklendi) — eski koleksiyon yeni
-        # şemayla uyumsuz. Önceki veri kullanıcıya özel alan ayrımı olmadan
-        # kaydedildiği için güvenle taşınamaz; koleksiyon düşürülüp yeni
-        # şemayla yeniden oluşturulur (Postgres tarafında da karşılık gelen
-        # eski test kayıtları migration'da zaten temizlendi).
+        # Şema değişmiş (yeni alan eklendi VEYA embedding modeli değişip vektör
+        # boyutu farklılaştı — bkz. services/config.py EMBEDDING_DIM). Önceki
+        # veri yeni şemayla uyumsuz (özellikle dim değişiminde: aynı "vector"
+        # alan adı ama farklı boyut, insert'te sessizce hata verir). Koleksiyon
+        # düşürülüp yeni şemayla yeniden oluşturulur — dim değişimi durumunda
+        # çağıran taraf (scripts/reembed_all.py) verileri yeniden embed edip
+        # geri yazmalıdır, aksi halde koleksiyon boş kalır.
         logger.warning(
-            "%s: şema değişmiş (eski alanlar=%s, yeni alanlar=%s) — "
+            "%s: şema değişmiş (eski alanlar=%s dim=%s, yeni alanlar=%s dim=%s) — "
             "koleksiyon düşürülüp yeniden oluşturuluyor.",
-            name, sorted(existing_field_names), sorted(expected_field_names),
+            name, sorted(existing_field_names), existing_dim,
+            sorted(expected_field_names), expected_dim,
         )
         existing.drop()
 

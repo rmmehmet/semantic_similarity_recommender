@@ -21,6 +21,21 @@ import os
 # yapılabilir.
 os.environ["HF_HUB_OFFLINE"] = os.getenv("HF_HUB_OFFLINE", "1")
 
+# ── Embedding Modeli ─────────────────────────────────────────────
+# Başlık/özet/tam-metin chunk'larının gömülmesinde kullanılan tek model —
+# chat_service.py, suggest_service.py ve database_router.py hepsi buradan
+# okur (eskiden üçünde de ayrı ayrı hardcode edilmişti).
+#
+# ÖNEMLİ: Bu değeri değiştirmek EMBEDDING_DIM'i de değiştirebilir, ki bu da
+# Milvus koleksiyon şemasını (vektör boyutu) etkiler — mevcut tüm PDF'lerin
+# yeniden embed edilip Milvus'a yeniden yazılması gerekir (bkz.
+# scripts/reembed_all.py). Sadece model adını değiştirip uygulamayı yeniden
+# başlatmak YETMEZ.
+EMBEDDING_MODEL: str = os.getenv(
+    "EMBEDDING_MODEL", "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+)
+EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "768"))
+
 # ── CORS ─────────────────────────────────────────────────────────
 # Virgülle ayrılmış origin listesi, örn:
 #   CORS_ORIGINS=https://altayai.example.com,https://www.altayai.example.com

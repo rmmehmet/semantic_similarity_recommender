@@ -36,7 +36,7 @@ from services.auth import get_current_user
 from services.text_preprocessing import extract_full_text_from_pdf
 from services.upload_validation import validate_pdf_bytes
 from services.rate_limit import rate_limit
-from services.config import OPENROUTER_API_KEY
+from services.config import EMBEDDING_MODEL, OPENROUTER_API_KEY
 
 # ── Öneri servisi ─────────────────────────────────────────────────
 from services.suggest_service import (
@@ -59,7 +59,7 @@ def _get_model() -> SentenceTransformer:
     if _model is None:
         with _model_lock:
             if _model is None:
-                _model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+                _model = SentenceTransformer(EMBEDDING_MODEL)
     return _model
 
 

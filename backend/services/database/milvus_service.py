@@ -16,6 +16,8 @@ from pymilvus import (
     utility,
 )
 
+from services.config import EMBEDDING_DIM as DIM  # bkz. services/config.py
+
 # ── Bağlantı ──────────────────────────────────────────────────────
 MILVUS_HOST = os.getenv("MILVUS_HOST", "localhost")
 MILVUS_DB   = os.getenv("MILVUS_DB",   "liftup_db")
@@ -24,8 +26,6 @@ MILVUS_PORT = int(os.getenv("MILVUS_PORT", "19530"))
 COL_TITLES    = "liftup_titles"
 COL_ABSTRACTS = "liftup_abstracts"
 COL_FULLTEXT  = "liftup_fulltext"
-
-DIM = 384  # paraphrase-multilingual-MiniLM-L12-v2
 
 _connected = False
 

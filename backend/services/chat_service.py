@@ -27,6 +27,7 @@ from typing import Any, Optional
 
 from sentence_transformers import SentenceTransformer
 
+from services.config import EMBEDDING_MODEL
 from services.database.milvus_service import milvus_search
 from services.database.postgres_service import pg_get_papers_by_names, pg_get_recent_messages
 from services.llm.chat_llm_service import call_ollama_chat, ollama_available
@@ -57,7 +58,7 @@ def _get_model() -> SentenceTransformer:
     if _model is None:
         with _model_lock:
             if _model is None:
-                _model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+                _model = SentenceTransformer(EMBEDDING_MODEL)
     return _model
 
 

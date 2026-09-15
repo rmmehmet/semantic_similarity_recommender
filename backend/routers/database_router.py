@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from services.auth import get_current_user, require_admin
+from services.config import EMBEDDING_MODEL
 from services.upload_validation import read_and_validate_pdf
 from services.text_preprocessing import (
     extract_title_from_pdf,
@@ -69,7 +70,7 @@ def _get_model() -> SentenceTransformer:
     if _model is None:
         with _model_lock:
             if _model is None:
-                _model = SentenceTransformer("paraphrase-multilingual-MiniLM-L12-v2")
+                _model = SentenceTransformer(EMBEDDING_MODEL)
     return _model
 
 
