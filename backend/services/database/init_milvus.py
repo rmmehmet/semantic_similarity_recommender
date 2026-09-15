@@ -67,15 +67,22 @@ def create_all_collections() -> None:
 
     # ── liftup_fulltext ───────────────────────────────────────────
     # 1 PDF → N chunk  |  ful text chunk vector (RAG retrieval)
+    # section/subsection/page_start/page_end: services/text_preprocessing.py'nin
+    # font-boyutu+kalınlık+numaralandırma tabanlı başlık tespitinden gelir —
+    # eski (bu değişiklikten önce yüklenmiş) chunk'larda boş/0 kalır.
     _ensure_collection(
         name="liftup_fulltext",
         fields=[
-            FieldSchema("id",        DataType.INT64,       is_primary=True, auto_id=True),
-            FieldSchema("user_id",   DataType.INT64),
-            FieldSchema("pdf_name",  DataType.VARCHAR,      max_length=512),
-            FieldSchema("chunk_idx", DataType.INT32),
-            FieldSchema("text",      DataType.VARCHAR,      max_length=2048),
-            FieldSchema("vector",    DataType.FLOAT_VECTOR, dim=DIM),
+            FieldSchema("id",         DataType.INT64,       is_primary=True, auto_id=True),
+            FieldSchema("user_id",    DataType.INT64),
+            FieldSchema("pdf_name",   DataType.VARCHAR,      max_length=512),
+            FieldSchema("chunk_idx",  DataType.INT32),
+            FieldSchema("text",       DataType.VARCHAR,      max_length=2048),
+            FieldSchema("section",    DataType.VARCHAR,      max_length=256),
+            FieldSchema("subsection", DataType.VARCHAR,      max_length=256),
+            FieldSchema("page_start", DataType.INT32),
+            FieldSchema("page_end",   DataType.INT32),
+            FieldSchema("vector",     DataType.FLOAT_VECTOR, dim=DIM),
         ],
         desc="PDF fulltext collection — for RAG retrieval (chunk-based)",
     )

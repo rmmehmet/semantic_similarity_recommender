@@ -31,6 +31,7 @@ from services.config import EMBEDDING_MODEL
 from services.database.milvus_service import milvus_search
 from services.database.postgres_service import pg_get_papers_by_names, pg_get_recent_messages
 from services.llm.chat_llm_service import call_ollama_chat, ollama_available, stream_ollama_chat
+from services.llm.reranker import rerank
 
 logger = logging.getLogger(__name__)
 
@@ -110,12 +111,21 @@ async def _prepare_messages(
             collection_name=COL_FULLTEXT,
             query_vector=query_vec,
             top_k=top_k,
-            output_fields=["pdf_name", "chunk_idx", "text"],
+            output_fields=["pdf_name", "chunk_idx", "text", "section", "subsection", "page_start", "page_end"],
             expr=expr,
         )
     except Exception as exc:
         logger.error("[Chat] Milvus arama hatası (user=%s): %s", user_id, exc)
         raw_hits = []
+
+    # Reranking — embedding skorunun ıskaladığı gerçek alakayı LLM'e sorup
+    # düzeltir. Başarısız/kapalıysa orijinal (Milvus skor) sırası korunur.
+    if raw_hits:
+        loop_r = asyncio.get_running_loop()
+        order = await loop_r.run_in_executor(
+            None, partial(rerank, message, [h.get("text", "") for h in raw_hits]),
+        )
+        raw_hits = [raw_hits[i] for i in order]
 
     # Başlık zenginleştirme (kaynak gösterimi için)
     hit_pdf_names = list({h.get("pdf_name", "") for h in raw_hits if h.get("pdf_name")})
@@ -124,12 +134,25 @@ async def _prepare_messages(
     context_blocks: list[str] = []
     sources: list[dict] = []
     seen_pdfs: set[str] = set()
-    for h in sorted(raw_hits, key=lambda x: -float(x.get("score", 0))):
+    for h in raw_hits:
         pname = h.get("pdf_name", "")
         text  = h.get("text", "")
         if not pname or not text:
             continue
-        context_blocks.append(f"[{pname}] {text}")
+
+        section    = h.get("section") or ""
+        subsection = h.get("subsection") or ""
+        location_bits = []
+        if section:
+            location_bits.append(section + (f" > {subsection}" if subsection else ""))
+        if h.get("page_start"):
+            pages = str(h["page_start"])
+            if h.get("page_end") and h["page_end"] != h["page_start"]:
+                pages += f"–{h['page_end']}"
+            location_bits.append(f"s.{pages}")
+        location = f" ({', '.join(location_bits)})" if location_bits else ""
+
+        context_blocks.append(f"[{pname}{location}] {text}")
         if pname not in seen_pdfs:
             seen_pdfs.add(pname)
             title = (papers.get(pname) or {}).get("raw_title") or pname
@@ -137,6 +160,7 @@ async def _prepare_messages(
                 "pdf_name":  pname,
                 "raw_title": title,
                 "score":     round(float(h.get("score", 0)), 4),
+                "section":   section,
             })
 
     context = "\n\n".join(context_blocks) if context_blocks else "— İlgili bir alıntı bulunamadı —"

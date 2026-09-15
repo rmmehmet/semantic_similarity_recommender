@@ -70,6 +70,12 @@ OPENROUTER_API_KEY: str | None = os.getenv("OPENROUTER_API_KEY") or None
 OPENROUTER_BASE_URL: str = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct")
 
+# Reranking için kullanılan model — OpenRouter'da ayrı bir rerank API'si
+# olmadığından, aynı chat-completions altyapısı üzerinden bir sıralama
+# çağrısı yapılır (bkz. services/llm/reranker.py). Varsayılan olarak ana
+# LLM ile aynıdır; istenirse daha ucuz/hızlı bir modelle değiştirilebilir.
+RERANK_MODEL: str = os.getenv("RERANK_MODEL", OPENROUTER_MODEL)
+
 # ── Kullanıcı Auth (JWT) ─────────────────────────────────────────
 # JWT_SECRET ZORUNLUDUR — services/security.py import edilirken kontrol
 # edilir ve ayarlanmamışsa uygulama başlamaz (bkz. o modüldeki hata mesajı).

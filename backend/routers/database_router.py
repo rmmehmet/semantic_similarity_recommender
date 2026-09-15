@@ -191,7 +191,7 @@ async def add_pdf(
     for ch in abs_chunks:
         embed_inputs.append(ch)
     for ch in ft_chunks:
-        embed_inputs.append(ch)
+        embed_inputs.append(ch["text"])
 
     all_vecs = await _embed_async(embed_inputs)
 
@@ -419,7 +419,7 @@ async def reconcile_database():
             for ch in abs_chunks:
                 embed_inputs.append(ch)
             for ch in ft_chunks:
-                embed_inputs.append(ch)
+                embed_inputs.append(ch["text"])
 
             all_vecs = await _embed_async(embed_inputs)
 

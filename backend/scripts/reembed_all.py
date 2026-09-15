@@ -93,13 +93,30 @@ async def main() -> None:
                     paper["id"],
                 )
                 ft_rows = await conn.fetch(
-                    "SELECT chunk_text FROM chunks WHERE paper_id = $1 AND chunk_type = 'fulltext' ORDER BY chunk_idx",
+                    """
+                    SELECT chunk_text, section, subsection, page_start, page_end
+                    FROM   chunks
+                    WHERE  paper_id = $1 AND chunk_type = 'fulltext'
+                    ORDER  BY chunk_idx
+                    """,
                     paper["id"],
                 )
             abs_chunks = [r["chunk_text"] for r in abs_rows] or ([abstract] if abstract else [])
-            ft_chunks  = [r["chunk_text"] for r in ft_rows]
+            # Eski (bu özellikten önce yüklenmiş) chunk'larda section/subsection/
+            # page_start/page_end boş/None olabilir — o zaman metadata'sız yeniden
+            # embed edilir; PDF'yi yeniden yüklemek (force_update) bunları doldurur.
+            ft_chunks = [
+                {
+                    "text":       r["chunk_text"],
+                    "section":    r["section"] or "",
+                    "subsection": r["subsection"] or "",
+                    "page_start": r["page_start"],
+                    "page_end":   r["page_end"],
+                }
+                for r in ft_rows
+            ]
 
-            embed_inputs = [title] + abs_chunks + ft_chunks
+            embed_inputs = [title] + abs_chunks + [c["text"] for c in ft_chunks]
             all_vecs = embed(embed_inputs)
 
             title_vec    = all_vecs[0]

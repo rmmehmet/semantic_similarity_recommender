@@ -117,7 +117,7 @@ def milvus_insert_abstract(
 
 def milvus_insert_fulltext_chunks(
     pdf_name: str,
-    chunks: list[str],
+    chunks: list[dict],
     vectors: list[list[float]],
     user_id: int,
     flush: bool = True,
@@ -125,7 +125,10 @@ def milvus_insert_fulltext_chunks(
     """Adds N entries to liftup_fulltext for the given PDF.
     Parameters:
     pdf_name (str): The name of the PDF file.
-    chunks (list[str]): The list of full text chunks.
+    chunks (list[dict]): [{"text","section","subsection","page_start","page_end"}, ...]
+                          — bkz. services/chunking_service.py::chunk_fulltext. Eski
+                          (bölüm/sayfa bilgisi olmayan) chunk'lar için section/subsection
+                          boş string, page_start/page_end None/0 verilebilir.
     vectors (list[list[float]]): The list of embedding vectors corresponding to each chunk.
     user_id (int): Owning user's id — belgeler kullanıcıya özeldir.
     flush (bool): Whether to force an immediate segment flush (see module note on flush cost).
@@ -137,11 +140,15 @@ def milvus_insert_fulltext_chunks(
     col = get_collection(COL_FULLTEXT)
     data = [
         {
-            "user_id":   user_id,
-            "pdf_name":  pdf_name,
-            "chunk_idx": i,
-            "text":      chunk,
-            "vector":    vectors[i],
+            "user_id":    user_id,
+            "pdf_name":   pdf_name,
+            "chunk_idx":  i,
+            "text":       chunk["text"],
+            "section":    chunk.get("section") or "",
+            "subsection": chunk.get("subsection") or "",
+            "page_start": chunk.get("page_start") or 0,
+            "page_end":   chunk.get("page_end") or 0,
+            "vector":     vectors[i],
         }
         for i, chunk in enumerate(chunks)
     ]

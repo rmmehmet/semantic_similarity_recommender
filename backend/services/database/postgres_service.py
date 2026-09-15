@@ -227,17 +227,26 @@ async def pg_get_all_pdf_names() -> set[tuple[int, str]]:
 # ══════════════════════════════════════════════════════════════════
 
 async def pg_insert_chunks(paper_id: int, chunks: list[dict]) -> None:
+    """
+    chunks: services/chunking_service.py::build_chunk_records()'ın döndürdüğü
+    kayıtlar — section/subsection/page_start/page_end alanları sadece
+    chunk_type='fulltext' için doludur, title/abstract'ta boş/None.
+    """
     if not chunks:
         return
     pool = await get_pool()
     async with pool.acquire() as conn:
         await conn.executemany(
             """
-            INSERT INTO chunks (paper_id, chunk_text, chunk_idx, chunk_type)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO chunks (paper_id, chunk_text, chunk_idx, chunk_type, section, subsection, page_start, page_end)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             """,
             [
-                (paper_id, c["chunk_text"], c["chunk_idx"], c["chunk_type"])
+                (
+                    paper_id, c["chunk_text"], c["chunk_idx"], c["chunk_type"],
+                    c.get("section") or "", c.get("subsection") or "",
+                    c.get("page_start"), c.get("page_end"),
+                )
                 for c in chunks
             ],
         )
@@ -257,7 +266,7 @@ async def pg_get_chunks(
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT chunk_idx, chunk_text, chunk_type
+            SELECT chunk_idx, chunk_text, chunk_type, section, subsection, page_start, page_end
             FROM   chunks
             WHERE  paper_id = $1 AND chunk_type = $2
             ORDER  BY chunk_idx
@@ -288,7 +297,7 @@ async def pg_get_detail(pdf_name: str, user_id: int) -> Optional[dict]:
 
         chunks = await conn.fetch(
             """
-            SELECT chunk_idx, chunk_text, chunk_type
+            SELECT chunk_idx, chunk_text, chunk_type, section, subsection, page_start, page_end
             FROM   chunks
             WHERE  paper_id = $1
             ORDER  BY chunk_type, chunk_idx

@@ -38,6 +38,7 @@ from services.llm.llm_suggestion_service import (
     generate_topic_suggestion,
     generate_rag_analysis,
 )
+from services.llm.reranker import rerank
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ COL_FULLTEXT  = "liftup_fulltext"
 
 TITLE_FIELDS    = ["pdf_name", "text"]
 ABSTRACT_FIELDS = ["pdf_name", "text"]
-FULLTEXT_FIELDS = ["pdf_name", "chunk_idx", "text"]
+FULLTEXT_FIELDS = ["pdf_name", "chunk_idx", "text", "section", "subsection", "page_start", "page_end"]
 
 # ── Sabitler ──────────────────────────────────────────────────────
 CHUNK_FETCH_MULTIPLIER  = 4   # top_k * 4 chunk getirilir, max-pooling sonrası top_k kalır
@@ -260,13 +261,30 @@ async def run_fulltext_search(
     for pdf_name, h in best_by_pdf.items():
         full_chunk = h.get("text", "")
         item = _normalize_hit(h, matched_text=_snippet(full_chunk))
-        item["raw_title"]  = ""   # _enrich_pg dolduracak
-        item["rag_chunks"] = [full_chunk] if full_chunk else []
+        item["raw_title"]   = ""   # _enrich_pg dolduracak
+        item["rag_chunks"]  = [full_chunk] if full_chunk else []
+        # En iyi (max-pooling'i kazanan) chunk'ın bölüm/sayfa bilgisi —
+        # eski chunk'larda (bu özellikten önce yüklenmiş) boş/None olabilir.
+        item["section"]     = h.get("section") or ""
+        item["subsection"]  = h.get("subsection") or ""
+        item["page_start"]  = h.get("page_start") or None
+        item["page_end"]    = h.get("page_end") or None
         results.append(item)
 
     results.sort(key=lambda x: x["score"], reverse=True)
     results = results[:top_k]
     results = await _enrich_pg(results, user_id)   # tek PG sorgusu — N+1 yok
+
+    # ── 3b. Reranking — embedding skorunun ıskaladığı gerçek alakayı
+    #        LLM'e sorup düzeltir. Sıra değişir, "score" alanı (cosine)
+    #        olduğu gibi kalır — sadece gösterim/RAG önceliği için kullanılır.
+    if results:
+        loop = asyncio.get_running_loop()
+        order = await loop.run_in_executor(
+            None,
+            partial(rerank, query_text, [r.get("matched_text") or r.get("raw_title", "") for r in results]),
+        )
+        results = [results[i] for i in order]
 
     # ── 4. RAG context builder ────────────────────────────────────
 

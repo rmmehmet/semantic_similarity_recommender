@@ -91,9 +91,12 @@ def call_openrouter(
     temperature: float,
     top_p: float,
     timeout: int,
+    model: str | None = None,
 ) -> str:
     """
     messages: [{"role": "system"|"user"|"assistant", "content": "..."}, ...]
+    model: verilmezse OPENROUTER_MODEL (ana LLM) kullanılır — reranker gibi
+    farklı bir modele ihtiyaç duyan çağıranlar burada override edebilir.
     Senkron (bloklayan) bir ağ çağrısıdır — çağıran taraf run_in_executor
     ile thread pool'a taşımalıdır. Tüm yanıtı bekler, tek parça döner.
     """
@@ -101,7 +104,7 @@ def call_openrouter(
         raise RuntimeError("OPENROUTER_API_KEY ayarlanmamış")
 
     req = _build_request({
-        "model":       OPENROUTER_MODEL,
+        "model":       model or OPENROUTER_MODEL,
         "messages":    messages,
         "temperature": temperature,
         "top_p":       top_p,

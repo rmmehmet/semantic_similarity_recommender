@@ -245,9 +245,26 @@ def _build_rag_messages(
         # (örn. eski bir çağıran) matched_text'e geri düşülür.
         chunks  = p.get("rag_chunks") or ([p["matched_text"]] if p.get("matched_text") else [])
         content = "\n···\n".join(c for c in chunks if c)[:MAX_SOURCE_CONTEXT_CHARS] or "— içerik yok —"
+
+        # Bölüm/sayfa bilgisi varsa göster — "bu benzerlik Yöntem bölümünde"
+        # gibi daha kesin bir atıf yapılmasını sağlar (eski chunk'larda boş
+        # olabilir, o zaman bu satır hiç eklenmez).
+        location_bits = []
+        if p.get("section"):
+            loc = p["section"]
+            if p.get("subsection"):
+                loc += f" > {p['subsection']}"
+            location_bits.append(f"Bölüm: {loc}")
+        if p.get("page_start"):
+            pages = str(p["page_start"])
+            if p.get("page_end") and p["page_end"] != p["page_start"]:
+                pages += f"–{p['page_end']}"
+            location_bits.append(f"Sayfa: {pages}")
+        location = f" ({', '.join(location_bits)})" if location_bits else ""
+
         context_blocks.append(
             f'[Kaynak {i+1}] '
-            f'"{p.get("raw_title") or p.get("pdf_name","?")}"\n'
+            f'"{p.get("raw_title") or p.get("pdf_name","?")}"{location}\n'
             f'Benzerlik: %{round(p.get("score", 0) * 100, 1)}\n'
             f'İçerik: {content}'
         )
