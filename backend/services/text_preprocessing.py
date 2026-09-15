@@ -163,6 +163,14 @@ _SECTION_KEYWORDS_RE = re.compile(
 )
 _HEADING_MAX_LEN = 140
 
+# İçindekiler (Table of Contents) satırları genelde "1.1 Yöntem . . . 12"
+# ya da "Kaynakça 29" gibi sonu nokta-dizisi/boşluk + sayfa numarasıyla biten
+# bir formatta olur — numaralandırma/anahtar-kelime kalıbına uysa da bunlar
+# GERÇEK başlık değildir (asıl başlık belgenin ilerisinde, sayfa numarası
+# OLMADAN tekrar geçer). Sonu böyle bir "nokta-dizisi + sayı" ile biten
+# satırları başlık adayı saymıyoruz.
+_TOC_TRAILING_PAGE_RE = re.compile(r"[.\s]{2,}\d{1,4}$")
+
 # Aşağıda gömülen <<<SECTION:..>>> / <<<SUBSECTION:..>>> / <<<PAGE:n>>>
 # işaretleyicileri sadece yazdırılabilir ASCII kullanır — text_preprocessing()
 # bunları bozmaz. chunking_service.py bunları ayrıştırıp chunk'lara
@@ -186,6 +194,8 @@ def _heading_level(text: str, size: float, bold: bool, body_size: float) -> int:
     """0 = başlık değil, 1 = bölüm (section), 2 = alt bölüm (subsection)."""
     if not (2 <= len(text) <= _HEADING_MAX_LEN):
         return 0
+    if _TOC_TRAILING_PAGE_RE.search(text):
+        return 0  # İçindekiler satırı (sonda sayfa numarası) — gerçek başlık değil
 
     numbered = re.match(r"^(\d+(?:\.\d+)*)\.?\s+\S", text)
     if numbered:

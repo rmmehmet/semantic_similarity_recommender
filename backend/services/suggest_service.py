@@ -32,7 +32,9 @@ from services.database.postgres_service import (
     pg_get_paper,
     pg_get_papers_by_names,
     pg_get_chunks,
+    pg_keyword_search_chunks,
 )
+from services.hybrid_search import fuse_hits
 from services.text_preprocessing import extract_full_text_from_pdf
 from services.llm.llm_suggestion_service import (
     generate_topic_suggestion,
@@ -236,14 +238,31 @@ async def run_fulltext_search(
     """
     logger.info("[Suggest/fulltext] başladı — user=%s top_k=%d", user_id, top_k)
 
-    # ── 1. Chunk araması ──────────────────────────────────────────
-    raw_hits = await _milvus_search_async(
-        collection_name=COL_FULLTEXT,
-        query_vector=query_vec,
-        top_k=top_k * CHUNK_FETCH_MULTIPLIER,
-        output_fields=FULLTEXT_FIELDS,
-        expr=f"user_id == {int(user_id)}",
+    # ── 1. Hibrit chunk araması — vektör (Milvus) + anahtar kelime (Postgres) ──
+    # İkisi paralel çalışır, sonra RRF ile birleştirilir (bkz. hybrid_search.py).
+    # Anahtar kelime araması Milvus'un kaçırabileceği tam eşleşmeleri (özel
+    # isim, kısaltma, formül) yakalar; hata verirse (örn. sorgu boşsa) arama
+    # tamamen vektöre düşer, sert bir bağımlılık değildir.
+    fetch_k = top_k * CHUNK_FETCH_MULTIPLIER
+    vector_hits, keyword_hits = await asyncio.gather(
+        _milvus_search_async(
+            collection_name=COL_FULLTEXT,
+            query_vector=query_vec,
+            top_k=fetch_k,
+            output_fields=FULLTEXT_FIELDS,
+            expr=f"user_id == {int(user_id)}",
+        ),
+        pg_keyword_search_chunks(user_id, query_text, limit=fetch_k),
+        return_exceptions=True,
     )
+    if isinstance(vector_hits, Exception):
+        logger.error("[Suggest/fulltext] Milvus arama hatası: %s", vector_hits)
+        vector_hits = []
+    if isinstance(keyword_hits, Exception):
+        logger.warning("[Suggest/fulltext] Anahtar kelime arama hatası: %s", keyword_hits)
+        keyword_hits = []
+
+    raw_hits = fuse_hits(vector_hits, keyword_hits)
 
     # ── 2. Paper bazında max-pooling ──────────────────────────────
     best_by_pdf: Dict[str, Dict] = {}
@@ -288,7 +307,7 @@ async def run_fulltext_search(
 
     # ── 4. RAG context builder ────────────────────────────────────
 
-    # 4a) Milvus ham chunk'ları — semantik olarak en alakalı
+    # 4a) Hibrit (vektör+anahtar kelime) aramadan gelen ham chunk'lar
     for h in raw_hits[:RAG_MILVUS_CHUNK_LIMIT]:
         pname = h.get("pdf_name", "")
         text  = h.get("text", "")

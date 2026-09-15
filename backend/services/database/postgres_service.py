@@ -277,6 +277,68 @@ async def pg_get_chunks(
 
 
 # ══════════════════════════════════════════════════════════════════
+# FULL-TEXT (KEYWORD) SEARCH — hibrit aramanın lexical tarafı
+# ══════════════════════════════════════════════════════════════════
+
+async def pg_keyword_search_chunks(
+    user_id: int,
+    query_text: str,
+    pdf_names: Optional[list[str]] = None,
+    limit: int = 40,
+) -> list[dict]:
+    """
+    Postgres full-text search (tsvector/ts_rank) — Milvus'un vektör aramasının
+    kaçırabileceği tam kelime/kısaltma/özel isim eşleşmelerini bulur. Sadece
+    bu kullanıcının fulltext chunk'ları içinde arar; pdf_names verilirse ona
+    da sınırlanır. bkz. services/hybrid_search.py::fuse_hits.
+
+    Döner: [{pdf_name, chunk_idx, text, section, subsection, page_start,
+             page_end, keyword_rank}, ...] — ts_rank'e göre azalan sıralı.
+    "text" alanı Milvus hit'leriyle aynı adı taşır (fuse_hits ile doğrudan
+    birleştirilebilsin diye); "score" DEĞİL "keyword_rank" adı kasıtlıdır —
+    bkz. hybrid_search.py'deki not (cosine skoruyla karıştırılmamalı).
+    """
+    query_text = (query_text or "").strip()
+    if not query_text:
+        return []
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        if pdf_names:
+            rows = await conn.fetch(
+                """
+                SELECT p.pdf_name, c.chunk_idx, c.chunk_text AS text,
+                       c.section, c.subsection, c.page_start, c.page_end,
+                       ts_rank(c.tsv, plainto_tsquery('simple', $2)) AS keyword_rank
+                FROM   chunks c
+                JOIN   papers p ON p.id = c.paper_id
+                WHERE  p.user_id = $1 AND c.chunk_type = 'fulltext'
+                       AND p.pdf_name = ANY($3::text[])
+                       AND c.tsv @@ plainto_tsquery('simple', $2)
+                ORDER  BY keyword_rank DESC
+                LIMIT  $4
+                """,
+                user_id, query_text, pdf_names, limit,
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT p.pdf_name, c.chunk_idx, c.chunk_text AS text,
+                       c.section, c.subsection, c.page_start, c.page_end,
+                       ts_rank(c.tsv, plainto_tsquery('simple', $2)) AS keyword_rank
+                FROM   chunks c
+                JOIN   papers p ON p.id = c.paper_id
+                WHERE  p.user_id = $1 AND c.chunk_type = 'fulltext'
+                       AND c.tsv @@ plainto_tsquery('simple', $2)
+                ORDER  BY keyword_rank DESC
+                LIMIT  $3
+                """,
+                user_id, query_text, limit,
+            )
+        return [dict(r) for r in rows]
+
+
+# ══════════════════════════════════════════════════════════════════
 # DETAIL
 # ══════════════════════════════════════════════════════════════════
 

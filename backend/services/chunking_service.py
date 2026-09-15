@@ -12,6 +12,13 @@ _TR_ABBREVS = re.compile(
 # services/text_preprocessing.py'nin metne gömdüğü bölüm/sayfa işaretleyicileri.
 _MARKER_RE = re.compile(r"<<<(SECTION|SUBSECTION|PAGE):(.*?)>>>")
 
+# Kaynakça/Referanslar bölümündeki chunk'lar embed edilmez — akademik
+# benzerlik/orijinallik değerlendirmesinde iki projenin aynı kaynaklara atıf
+# yapması yanıltıcı bir "benzerlik" sinyalidir, içerik benzerliği değildir.
+_REFERENCES_SECTION_RE = re.compile(
+    r"kaynak(?:ça)?|referanslar|references?|bibliography", re.IGNORECASE
+)
+
 
 def _split_sentences(text: str) -> list[str]:
     """
@@ -117,6 +124,12 @@ def chunk_fulltext(
 
     if current:
         chunks.append(_finalize(current))
+
+    # Kaynakça/Referanslar bölümündeki chunk'ları at (bkz. yukarıdaki not).
+    # Bir chunk'ın section'ı, o chunk'ın İLK cümlesinin ait olduğu bölümdür —
+    # bu yüzden Kaynakça başlığının hemen öncesindeki geçiş chunk'ı (son
+    # gövde cümleleri + ilk birkaç atıf) yanlışlıkla atılmaz, tutulur.
+    chunks = [c for c in chunks if not _REFERENCES_SECTION_RE.search(c["section"] or "")]
 
     return chunks
 

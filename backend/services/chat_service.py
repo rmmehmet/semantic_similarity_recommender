@@ -29,7 +29,12 @@ from sentence_transformers import SentenceTransformer
 
 from services.config import EMBEDDING_MODEL
 from services.database.milvus_service import milvus_search
-from services.database.postgres_service import pg_get_papers_by_names, pg_get_recent_messages
+from services.database.postgres_service import (
+    pg_get_papers_by_names,
+    pg_get_recent_messages,
+    pg_keyword_search_chunks,
+)
+from services.hybrid_search import fuse_hits
 from services.llm.chat_llm_service import call_ollama_chat, ollama_available, stream_ollama_chat
 from services.llm.reranker import rerank
 
@@ -106,17 +111,31 @@ async def _prepare_messages(
     top_k = min(MAX_TOP_K, TOP_K_PER_DOC * len(pdf_names)) if pdf_names else TOP_K_GENERAL
     expr = _build_expr(user_id, pdf_names)
 
-    try:
-        raw_hits = await _milvus_search_async(
-            collection_name=COL_FULLTEXT,
-            query_vector=query_vec,
-            top_k=top_k,
-            output_fields=["pdf_name", "chunk_idx", "text", "section", "subsection", "page_start", "page_end"],
-            expr=expr,
-        )
-    except Exception as exc:
-        logger.error("[Chat] Milvus arama hatası (user=%s): %s", user_id, exc)
-        raw_hits = []
+    # Hibrit arama — vektör (Milvus) + anahtar kelime (Postgres), paralel
+    # çalışır, RRF ile birleştirilir (bkz. services/hybrid_search.py).
+    # İkisi de best-effort: biri hata verirse diğeriyle devam edilir.
+    async def _vector_search() -> list[dict]:
+        try:
+            return await _milvus_search_async(
+                collection_name=COL_FULLTEXT,
+                query_vector=query_vec,
+                top_k=top_k,
+                output_fields=["pdf_name", "chunk_idx", "text", "section", "subsection", "page_start", "page_end"],
+                expr=expr,
+            )
+        except Exception as exc:
+            logger.error("[Chat] Milvus arama hatası (user=%s): %s", user_id, exc)
+            return []
+
+    async def _keyword_search() -> list[dict]:
+        try:
+            return await pg_keyword_search_chunks(user_id, message, pdf_names=pdf_names or None, limit=top_k)
+        except Exception as exc:
+            logger.warning("[Chat] Anahtar kelime arama hatası (user=%s): %s", user_id, exc)
+            return []
+
+    vector_hits, keyword_hits = await asyncio.gather(_vector_search(), _keyword_search())
+    raw_hits = fuse_hits(vector_hits, keyword_hits)
 
     # Reranking — embedding skorunun ıskaladığı gerçek alakayı LLM'e sorup
     # düzeltir. Başarısız/kapalıysa orijinal (Milvus skor) sırası korunur.
