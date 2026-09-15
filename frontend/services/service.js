@@ -81,6 +81,68 @@ export const sendChatMessage = async (message, pdfNames = [], conversationId = n
   return res.data;
 };
 
+/**
+ * sendChatMessage ile aynı, ama yanıtı Server-Sent-Events ile parça parça akıtır.
+ * axios tarayıcıda streaming response body okumayı desteklemediği için burada
+ * ham fetch() + ReadableStream kullanılır.
+ *
+ * @param {string} message
+ * @param {string[]} pdfNames
+ * @param {number|null} conversationId
+ * @param {{
+ *   onChunk?: (delta: string) => void,
+ *   onDone?:  (data: {conversation_id: number|null, sources: object[], title?: string}) => void,
+ *   onError?: (message: string) => void,
+ *   signal?: AbortSignal,
+ * }} handlers
+ */
+export const streamChatMessage = async (message, pdfNames = [], conversationId = null, handlers = {}) => {
+  const { onChunk, onDone, onError, signal } = handlers;
+
+  const res = await fetch(`${API_BASE}/chat/message/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ message, pdf_names: pdfNames, conversation_id: conversationId }),
+    signal,
+  });
+
+  if (!res.ok || !res.body) {
+    throw new Error(`Sunucuya bağlanılamadı (HTTP ${res.status})`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let sepIndex;
+    while ((sepIndex = buffer.indexOf("\n\n")) !== -1) {
+      const rawEvent = buffer.slice(0, sepIndex);
+      buffer = buffer.slice(sepIndex + 2);
+
+      let eventName = "message";
+      let dataStr = "";
+      for (const line of rawEvent.split("\n")) {
+        if (line.startsWith("event:")) eventName = line.slice(6).trim();
+        else if (line.startsWith("data:")) dataStr += line.slice(5).trim();
+      }
+      if (!dataStr) continue;
+
+      let data;
+      try { data = JSON.parse(dataStr); } catch { continue; }
+
+      if (eventName === "chunk") onChunk?.(data.delta);
+      else if (eventName === "error") onError?.(data.message);
+      else if (eventName === "done") onDone?.(data);
+    }
+  }
+};
+
 /** @returns {Promise<{conversations: {id, title, updated_at}[]}>} */
 export const listConversations = async () => {
   const res = await api.get("/chat/conversations");

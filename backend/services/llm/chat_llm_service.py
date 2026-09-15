@@ -11,7 +11,9 @@ user) mesaj listesi kabul eder.
 
 from __future__ import annotations
 
-from services.llm.openrouter_client import call_openrouter, openrouter_available
+from typing import Iterator
+
+from services.llm.openrouter_client import call_openrouter, openrouter_available, stream_openrouter
 
 
 def ollama_available() -> bool:
@@ -25,6 +27,20 @@ def call_ollama_chat(messages: list[dict], timeout: int = 180) -> str:
     ile thread pool'a taşımalıdır (bkz. services/chat_service.py).
     """
     return call_openrouter(
+        messages=messages,
+        max_tokens=1600,
+        temperature=0.4,
+        top_p=0.9,
+        timeout=timeout,
+    )
+
+
+def stream_ollama_chat(messages: list[dict], timeout: int = 180) -> Iterator[str]:
+    """
+    call_ollama_chat ile aynı, ama yanıtı parça parça (delta metin) yield eder.
+    Senkron (bloklayan) bir GENERATOR'dır — bkz. services/chat_service.py::stream_chat.
+    """
+    return stream_openrouter(
         messages=messages,
         max_tokens=1600,
         temperature=0.4,

@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   dbListPdfs,
-  sendChatMessage,
+  streamChatMessage,
   listConversations,
   getConversation,
   deleteConversation,
@@ -313,34 +313,61 @@ export default function Chat() {
       .catch(() => {});
   }, [activeConversationId, startNewChat]);
 
+  // Akan yanıtın son mesaja (asistan balonu) yazılması — hep dizideki SON
+  // öğeyi hedefler, bu yüzden çağıran taraf balonu ekledikten hemen sonra
+  // başka bir setMessages araya girmemelidir (send() bu sırayı korur).
+  const appendToLastAssistant = useCallback((patch) => {
+    setMessages((prev) => {
+      const next = [...prev];
+      const last = next[next.length - 1];
+      if (last && last.role === "assistant" && last.streaming) {
+        next[next.length - 1] = typeof patch === "function" ? patch(last) : { ...last, ...patch };
+      }
+      return next;
+    });
+  }, []);
+
   const send = useCallback(async (text) => {
     const trimmed = (text ?? input).trim();
     if (!trimmed || sending) return;
 
-    setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: trimmed },
+      { role: "assistant", content: "", sources: [], streaming: true },
+    ]);
     setInput("");
     setSending(true);
 
     try {
-      const res = await sendChatMessage(trimmed, Array.from(selected), activeConversationId);
-      if (res.success === false) {
-        setMessages((prev) => [...prev, { role: "assistant", content: res.reply || "Bir hata oluştu.", error: true }]);
-      } else {
-        setMessages((prev) => [...prev, { role: "assistant", content: res.reply, sources: res.sources || [] }]);
-        if (res.conversation_id && res.conversation_id !== activeConversationId) {
-          setActiveConversationId(res.conversation_id);
-          localStorage.setItem(ACTIVE_CONVERSATION_KEY, String(res.conversation_id));
-        }
-      }
-      refreshConversations();
+      await streamChatMessage(trimmed, Array.from(selected), activeConversationId, {
+        onChunk: (delta) => {
+          appendToLastAssistant((last) => ({ ...last, content: last.content + delta }));
+        },
+        onDone: (data) => {
+          appendToLastAssistant({ streaming: false, sources: data.sources || [] });
+          if (data.conversation_id && data.conversation_id !== activeConversationId) {
+            setActiveConversationId(data.conversation_id);
+            localStorage.setItem(ACTIVE_CONVERSATION_KEY, String(data.conversation_id));
+          }
+          refreshConversations();
+        },
+        onError: (msg) => {
+          appendToLastAssistant((last) => ({
+            ...last,
+            streaming: false,
+            error: true,
+            content: last.content || msg || "Bir hata oluştu.",
+          }));
+        },
+      });
     } catch (err) {
-      const detail = err?.response?.data?.detail;
-      const msg = typeof detail === "string" ? detail : "Sunucuya bağlanılamadı.";
-      setMessages((prev) => [...prev, { role: "assistant", content: msg, error: true }]);
+      const msg = err?.message || "Sunucuya bağlanılamadı.";
+      appendToLastAssistant((last) => ({ ...last, streaming: false, error: true, content: last.content || msg }));
     } finally {
       setSending(false);
     }
-  }, [input, sending, selected, activeConversationId, refreshConversations]);
+  }, [input, sending, selected, activeConversationId, refreshConversations, appendToLastAssistant]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -440,26 +467,25 @@ export default function Chat() {
 
             {messages.map((m, i) => (
               <div key={i} className={`chat-row chat-row--${m.role}`}>
-                <div className={`chat-bubble chat-bubble--${m.role}${m.error ? " chat-bubble--error" : ""}`}>
-                  {m.content}
-                  {m.sources && m.sources.length > 0 && (
-                    <div className="chat-sources">
-                      {m.sources.map((s) => (
-                        <SourceChip key={s.pdf_name} source={s} />
-                      ))}
-                    </div>
-                  )}
-                </div>
+                {m.streaming && !m.content ? (
+                  <div className="chat-typing">
+                    <span /><span /><span />
+                  </div>
+                ) : (
+                  <div className={`chat-bubble chat-bubble--${m.role}${m.error ? " chat-bubble--error" : ""}`}>
+                    {m.content}
+                    {m.streaming && <span className="chat-cursor" aria-hidden="true" />}
+                    {m.sources && m.sources.length > 0 && (
+                      <div className="chat-sources">
+                        {m.sources.map((s) => (
+                          <SourceChip key={s.pdf_name} source={s} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
-
-            {sending && (
-              <div className="chat-row chat-row--assistant">
-                <div className="chat-typing">
-                  <span /><span /><span />
-                </div>
-              </div>
-            )}
           </div>
 
           <div className="chat-inputbar">

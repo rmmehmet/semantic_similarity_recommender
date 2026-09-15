@@ -30,7 +30,7 @@ from sentence_transformers import SentenceTransformer
 from services.config import EMBEDDING_MODEL
 from services.database.milvus_service import milvus_search
 from services.database.postgres_service import pg_get_papers_by_names, pg_get_recent_messages
-from services.llm.chat_llm_service import call_ollama_chat, ollama_available
+from services.llm.chat_llm_service import call_ollama_chat, ollama_available, stream_ollama_chat
 
 logger = logging.getLogger(__name__)
 
@@ -86,19 +86,20 @@ def _build_expr(user_id: int, pdf_names: list[str]) -> str:
     return expr
 
 
-async def run_chat(
+async def _prepare_messages(
     user_id: int,
     message: str,
     pdf_names: list[str],
     conversation_id: Optional[int],
-) -> dict[str, Any]:
-    if not ollama_available():
-        return {
-            "success": False,
-            "reply": "Ollama şu anda erişilebilir değil. Lütfen daha sonra tekrar deneyin.",
-            "sources": [],
-        }
+) -> tuple[list[dict], list[dict]]:
+    """
+    Ortak hazırlık adımı: embed → Milvus arama → context/kaynak listesi →
+    history → tam mesaj listesi. Hem run_chat (tek seferlik) hem stream_chat
+    (parça parça) tarafından kullanılır — LLM'e SADECE bu fonksiyonun çıktısı
+    farklı şekillerde gönderilir, retrieval mantığı tek yerde kalır.
 
+    Döner: (messages, sources)
+    """
     query_vec = await _embed_async(message)
 
     top_k = min(MAX_TOP_K, TOP_K_PER_DOC * len(pdf_names)) if pdf_names else TOP_K_GENERAL
@@ -154,11 +155,83 @@ async def run_chat(
         "content": f"Belgelerden alınan bağlam:\n{context}\n\nSoru: {message}",
     })
 
+    return messages, sources
+
+
+async def run_chat(
+    user_id: int,
+    message: str,
+    pdf_names: list[str],
+    conversation_id: Optional[int],
+) -> dict[str, Any]:
+    if not ollama_available():
+        return {
+            "success": False,
+            "reply": "OpenRouter şu anda erişilebilir değil. Lütfen daha sonra tekrar deneyin.",
+            "sources": [],
+        }
+
+    messages, sources = await _prepare_messages(user_id, message, pdf_names, conversation_id)
+
     loop = asyncio.get_running_loop()
     try:
         reply = await loop.run_in_executor(None, partial(call_ollama_chat, messages))
     except Exception as exc:
-        logger.error("[Chat] Ollama çağrı hatası (user=%s): %s", user_id, exc)
+        logger.error("[Chat] OpenRouter çağrı hatası (user=%s): %s", user_id, exc)
         return {"success": False, "reply": "Yanıt üretilirken bir hata oluştu.", "sources": []}
 
     return {"success": True, "reply": reply, "sources": sources}
+
+
+async def stream_chat(
+    user_id: int,
+    message: str,
+    pdf_names: list[str],
+    conversation_id: Optional[int],
+):
+    """
+    run_chat ile aynı retrieval/prompt hazırlığını yapar, ama LLM yanıtını
+    parça parça yield eder. Her öğe bir dict:
+      {"type": "chunk", "delta": str}
+      {"type": "done",  "reply": str, "sources": [...]}
+      {"type": "error", "message": str}
+    "done"/"error" ile biter — çağıran taraf (chat_router.py) bundan sonra
+    Postgres'e yazma/response sonlandırma işini yapar.
+    """
+    if not ollama_available():
+        yield {
+            "type": "error",
+            "message": "OpenRouter şu anda erişilebilir değil. Lütfen daha sonra tekrar deneyin.",
+        }
+        return
+
+    messages, sources = await _prepare_messages(user_id, message, pdf_names, conversation_id)
+
+    loop  = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+    _SENTINEL = object()
+
+    def worker() -> None:
+        try:
+            for delta in stream_ollama_chat(messages):
+                loop.call_soon_threadsafe(queue.put_nowait, delta)
+        except Exception as exc:  # noqa: BLE001 — hata tipini queue üzerinden taşımak için yakalanır
+            loop.call_soon_threadsafe(queue.put_nowait, exc)
+        finally:
+            loop.call_soon_threadsafe(queue.put_nowait, _SENTINEL)
+
+    loop.run_in_executor(None, worker)
+
+    full_reply: list[str] = []
+    while True:
+        item = await queue.get()
+        if item is _SENTINEL:
+            break
+        if isinstance(item, Exception):
+            logger.error("[Chat] OpenRouter akış hatası (user=%s): %s", user_id, item)
+            yield {"type": "error", "message": "Yanıt üretilirken bir hata oluştu."}
+            return
+        full_reply.append(item)
+        yield {"type": "chunk", "delta": item}
+
+    yield {"type": "done", "reply": "".join(full_reply), "sources": sources}
