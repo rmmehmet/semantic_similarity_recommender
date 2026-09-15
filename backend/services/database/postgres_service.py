@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 from typing import Optional
@@ -393,3 +394,136 @@ async def pg_get_user_by_id(user_id: int) -> Optional[dict]:
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT * FROM users WHERE id = $1", user_id)
         return dict(row) if row else None
+
+
+# ══════════════════════════════════════════════════════════════════
+# CHAT CONVERSATIONS
+# ══════════════════════════════════════════════════════════════════
+
+async def pg_create_conversation(user_id: int, title: str, pdf_names: list[str]) -> dict:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO chat_conversations (user_id, title, pdf_names)
+            VALUES ($1, $2, $3::jsonb)
+            RETURNING id, title, pdf_names, created_at, updated_at
+            """,
+            user_id, title, json.dumps(pdf_names),
+        )
+        d = dict(row)
+        d["pdf_names"] = json.loads(d["pdf_names"]) if isinstance(d["pdf_names"], str) else d["pdf_names"]
+        return d
+
+
+async def pg_list_conversations(user_id: int, limit: int = 200) -> list[dict]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, title, updated_at
+            FROM   chat_conversations
+            WHERE  user_id = $1
+            ORDER  BY updated_at DESC
+            LIMIT  $2
+            """,
+            user_id, limit,
+        )
+        return [dict(r) for r in rows]
+
+
+async def pg_get_conversation(conversation_id: int, user_id: int) -> Optional[dict]:
+    """Sahiplik kontrolüyle birlikte — başka kullanıcının sohbeti None döner."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, title, pdf_names, created_at, updated_at
+            FROM   chat_conversations
+            WHERE  id = $1 AND user_id = $2
+            """,
+            conversation_id, user_id,
+        )
+        if not row:
+            return None
+        d = dict(row)
+        d["pdf_names"] = json.loads(d["pdf_names"]) if isinstance(d["pdf_names"], str) else d["pdf_names"]
+        return d
+
+
+async def pg_touch_conversation(conversation_id: int, pdf_names: list[str]) -> None:
+    """Mesaj her gönderildiğinde çağrılır — güncel PDF kapsamını ve updated_at'i yazar."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE chat_conversations
+            SET    pdf_names = $2::jsonb, updated_at = NOW()
+            WHERE  id = $1
+            """,
+            conversation_id, json.dumps(pdf_names),
+        )
+
+
+async def pg_delete_conversation(conversation_id: int, user_id: int) -> bool:
+    """Sadece bu kullanıcıya ait sohbeti siler (mesajlar CASCADE ile gider)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM chat_conversations WHERE id = $1 AND user_id = $2",
+            conversation_id, user_id,
+        )
+        return result.split()[-1] != "0"
+
+
+async def pg_add_message(conversation_id: int, role: str, content: str, sources: list[dict]) -> None:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO chat_messages (conversation_id, role, content, sources)
+            VALUES ($1, $2, $3, $4::jsonb)
+            """,
+            conversation_id, role, content, json.dumps(sources),
+        )
+
+
+async def pg_get_conversation_messages(conversation_id: int) -> list[dict]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT role, content, sources, created_at
+            FROM   chat_messages
+            WHERE  conversation_id = $1
+            ORDER  BY created_at
+            """,
+            conversation_id,
+        )
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["sources"] = json.loads(d["sources"]) if isinstance(d["sources"], str) else d["sources"]
+            result.append(d)
+        return result
+
+
+async def pg_get_recent_messages(conversation_id: int, limit: int) -> list[dict]:
+    """En son N mesajı, eskiden yeniye sıralı döner (LLM bağlamı için)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT role, content
+            FROM   (
+                SELECT role, content, created_at
+                FROM   chat_messages
+                WHERE  conversation_id = $1
+                ORDER  BY created_at DESC
+                LIMIT  $2
+            ) recent
+            ORDER BY created_at
+            """,
+            conversation_id, limit,
+        )
+        return [dict(r) for r in rows]

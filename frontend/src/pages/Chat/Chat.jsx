@@ -1,8 +1,16 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { dbListPdfs, sendChatMessage } from "../../../services/service";
+import {
+  dbListPdfs,
+  sendChatMessage,
+  listConversations,
+  getConversation,
+  deleteConversation,
+} from "../../../services/service";
 import UserMenu from "../../UserMenu";
 import "./Chat.css";
+
+const ACTIVE_CONVERSATION_KEY = "altayai_chat_active_conversation";
 
 const NAV_LINKS = [
   ["PDF Bölme", "/split"],
@@ -58,8 +66,63 @@ function CheckIcon() {
   );
 }
 
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" width="13" height="13">
+      <path d="M8 2v12M2 8h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 14 14" fill="none" width="12" height="12">
+      <path
+        d="M2.5 3.5h9M5.5 3.5V2h3v1.5M3.5 3.5l.5 8.5h6l.5-8.5"
+        stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+// ── Sohbet geçmişi listesi ────────────────────────────────────────
+function HistoryPanel({ conversations, loading, activeId, onSelect, onNew, onDelete }) {
+  return (
+    <div className="chat-history">
+      <div className="chat-history__head">
+        <div className="chat-sidebar__title">Sohbetlerim</div>
+        <button className="chat-history__new" onClick={onNew}>
+          <PlusIcon /> Yeni Sohbet
+        </button>
+      </div>
+      <div className="chat-history__list">
+        {loading && <div className="chat-sidebar__empty">Yükleniyor…</div>}
+        {!loading && conversations.length === 0 && (
+          <div className="chat-sidebar__empty">Henüz sohbetin yok.</div>
+        )}
+        {conversations.map((c) => (
+          <div
+            key={c.id}
+            className={`chat-history-item${c.id === activeId ? " active" : ""}`}
+            onClick={() => onSelect(c.id)}
+          >
+            <span className="chat-history-item__title">{c.title}</span>
+            <button
+              className="chat-history-item__del"
+              title="Sohbeti sil"
+              onClick={(e) => { e.stopPropagation(); onDelete(c.id); }}
+            >
+              <TrashIcon />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Sidebar: kullanıcının PDF'lerini seçme ──────────────────────────
-function Sidebar({ docs, loading, selected, onToggle, onClear, open }) {
+function Sidebar({ docs, loading, selected, onToggle, onClear, open, history }) {
   const [q, setQ] = useState("");
   const filtered = docs.filter((d) => {
     const s = q.trim().toLowerCase();
@@ -69,6 +132,7 @@ function Sidebar({ docs, loading, selected, onToggle, onClear, open }) {
 
   return (
     <aside className={`chat-sidebar${open ? " open" : ""}`}>
+      {history}
       <div className="chat-sidebar__head">
         <div className="chat-sidebar__title">Belgelerim</div>
         <div className="chat-sidebar__hint">
@@ -141,8 +205,17 @@ export default function Chat() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [conversations, setConversations] = useState([]);
+  const [conversationsLoading, setConversationsLoading] = useState(true);
+  const [activeConversationId, setActiveConversationId] = useState(null);
   const scrollRef = useRef(null);
   const textareaRef = useRef(null);
+
+  const refreshConversations = useCallback(() => {
+    listConversations()
+      .then((res) => setConversations(res.conversations || []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let ignore = false;
@@ -150,6 +223,40 @@ export default function Chat() {
       .then((res) => { if (!ignore) setDocs(res.documents || []); })
       .catch(() => { if (!ignore) setDocs([]); })
       .finally(() => { if (!ignore) setDocsLoading(false); });
+    return () => { ignore = true; };
+  }, []);
+
+  // Sohbet listesi + (varsa) sayfa yenilenmeden önce aktif olan sohbetin
+  // geri yüklenmesi — refresh/remount sonrası sohbetin kaybolmamasının
+  // tek kaynağı burasıdır.
+  useEffect(() => {
+    let ignore = false;
+
+    listConversations()
+      .then((res) => { if (!ignore) setConversations(res.conversations || []); })
+      .catch(() => {})
+      .finally(() => { if (!ignore) setConversationsLoading(false); });
+
+    const storedId = localStorage.getItem(ACTIVE_CONVERSATION_KEY);
+    if (storedId) {
+      getConversation(storedId)
+        .then((conv) => {
+          if (ignore) return;
+          setActiveConversationId(conv.id);
+          setSelected(new Set(conv.pdf_names || []));
+          setMessages(
+            (conv.messages || []).map((m) => ({
+              role: m.role,
+              content: m.content,
+              sources: m.sources || [],
+            })),
+          );
+        })
+        .catch(() => {
+          localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+        });
+    }
+
     return () => { ignore = true; };
   }, []);
 
@@ -167,26 +274,65 @@ export default function Chat() {
 
   const clearSelection = useCallback(() => setSelected(new Set()), []);
 
+  const startNewChat = useCallback(() => {
+    setMessages([]);
+    setSelected(new Set());
+    setActiveConversationId(null);
+    localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+  }, []);
+
+  const selectConversation = useCallback((id) => {
+    if (id === activeConversationId) return;
+    getConversation(id)
+      .then((conv) => {
+        setActiveConversationId(conv.id);
+        setSelected(new Set(conv.pdf_names || []));
+        setMessages(
+          (conv.messages || []).map((m) => ({
+            role: m.role,
+            content: m.content,
+            sources: m.sources || [],
+          })),
+        );
+        localStorage.setItem(ACTIVE_CONVERSATION_KEY, String(conv.id));
+        setSidebarOpen(false);
+      })
+      .catch(() => {
+        refreshConversations();
+      });
+  }, [activeConversationId, refreshConversations]);
+
+  const removeConversation = useCallback((id) => {
+    deleteConversation(id)
+      .then(() => {
+        setConversations((prev) => prev.filter((c) => c.id !== id));
+        if (id === activeConversationId) {
+          startNewChat();
+        }
+      })
+      .catch(() => {});
+  }, [activeConversationId, startNewChat]);
+
   const send = useCallback(async (text) => {
     const trimmed = (text ?? input).trim();
     if (!trimmed || sending) return;
-
-    const history = messages
-      .filter((m) => !m.error)
-      .slice(-10)
-      .map((m) => ({ role: m.role, content: m.content }));
 
     setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
     setInput("");
     setSending(true);
 
     try {
-      const res = await sendChatMessage(trimmed, Array.from(selected), history);
+      const res = await sendChatMessage(trimmed, Array.from(selected), activeConversationId);
       if (res.success === false) {
         setMessages((prev) => [...prev, { role: "assistant", content: res.reply || "Bir hata oluştu.", error: true }]);
       } else {
         setMessages((prev) => [...prev, { role: "assistant", content: res.reply, sources: res.sources || [] }]);
+        if (res.conversation_id && res.conversation_id !== activeConversationId) {
+          setActiveConversationId(res.conversation_id);
+          localStorage.setItem(ACTIVE_CONVERSATION_KEY, String(res.conversation_id));
+        }
       }
+      refreshConversations();
     } catch (err) {
       const detail = err?.response?.data?.detail;
       const msg = typeof detail === "string" ? detail : "Sunucuya bağlanılamadı.";
@@ -194,7 +340,7 @@ export default function Chat() {
     } finally {
       setSending(false);
     }
-  }, [input, sending, messages, selected]);
+  }, [input, sending, selected, activeConversationId, refreshConversations]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -224,6 +370,16 @@ export default function Chat() {
           onToggle={toggleDoc}
           onClear={clearSelection}
           open={sidebarOpen}
+          history={
+            <HistoryPanel
+              conversations={conversations}
+              loading={conversationsLoading}
+              activeId={activeConversationId}
+              onSelect={selectConversation}
+              onNew={startNewChat}
+              onDelete={removeConversation}
+            />
+          }
         />
 
         <main className="chat-main">
@@ -250,7 +406,7 @@ export default function Chat() {
               )}
             </div>
             {messages.length > 0 && (
-              <button className="chat-main__new" onClick={() => setMessages([])}>
+              <button className="chat-main__new" onClick={startNewChat}>
                 <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
                   <path d="M8 2v12M2 8h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                 </svg>

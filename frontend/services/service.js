@@ -69,15 +69,32 @@ export const previewSectionPDF = async (file, section) => {
 /**
  * @param {string} message
  * @param {string[]} pdfNames - seçili PDF adları (boşsa kullanıcının TÜM belgelerinde arama yapılır)
- * @param {{role: "user"|"assistant", content: string}[]} history - önceki tur(lar), son ~10 tanesi yeterli
- * @returns {Promise<{success: boolean, reply: string, sources: {pdf_name, raw_title, score}[]}>}
+ * @param {number|null} conversationId - null ise yeni bir sohbet oluşturulur (dönüşte conversation_id + title gelir)
+ * @returns {Promise<{success: boolean, reply: string, sources: {pdf_name, raw_title, score}[], conversation_id: number|null, title?: string}>}
  */
-export const sendChatMessage = async (message, pdfNames = [], history = []) => {
+export const sendChatMessage = async (message, pdfNames = [], conversationId = null) => {
   const res = await api.post(
     "/chat/message",
-    { message, pdf_names: pdfNames, history },
+    { message, pdf_names: pdfNames, conversation_id: conversationId },
     { timeout: 180_000 }, // LLM yanıtı uzun sürebilir
   );
+  return res.data;
+};
+
+/** @returns {Promise<{conversations: {id, title, updated_at}[]}>} */
+export const listConversations = async () => {
+  const res = await api.get("/chat/conversations");
+  return res.data;
+};
+
+/** @returns {Promise<{id, title, pdf_names, messages}>} */
+export const getConversation = async (conversationId) => {
+  const res = await api.get(`/chat/conversations/${conversationId}`);
+  return res.data;
+};
+
+export const deleteConversation = async (conversationId) => {
+  const res = await api.delete(`/chat/conversations/${conversationId}`);
   return res.data;
 };
 // ─────────────────────────────────────────────────────────────────

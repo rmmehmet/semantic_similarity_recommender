@@ -28,7 +28,7 @@ from typing import Any, Optional
 from sentence_transformers import SentenceTransformer
 
 from services.database.milvus_service import milvus_search
-from services.database.postgres_service import pg_get_papers_by_names
+from services.database.postgres_service import pg_get_papers_by_names, pg_get_recent_messages
 from services.llm.chat_llm_service import call_ollama_chat, ollama_available
 
 logger = logging.getLogger(__name__)
@@ -89,7 +89,7 @@ async def run_chat(
     user_id: int,
     message: str,
     pdf_names: list[str],
-    history: list[dict],
+    conversation_id: Optional[int],
 ) -> dict[str, Any]:
     if not ollama_available():
         return {
@@ -139,8 +139,10 @@ async def run_chat(
 
     context = "\n\n".join(context_blocks) if context_blocks else "— İlgili bir alıntı bulunamadı —"
 
+    history = await pg_get_recent_messages(conversation_id, MAX_HISTORY_TURNS) if conversation_id else []
+
     messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
-    for turn in history[-MAX_HISTORY_TURNS:]:
+    for turn in history:
         role    = turn.get("role")
         content = turn.get("content")
         if role in ("user", "assistant") and content:
