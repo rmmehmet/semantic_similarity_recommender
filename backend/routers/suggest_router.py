@@ -36,7 +36,7 @@ from services.auth import get_current_user
 from services.text_preprocessing import extract_full_text_from_pdf
 from services.upload_validation import validate_pdf_bytes
 from services.rate_limit import rate_limit
-from services.config import OLLAMA_URL
+from services.config import OPENROUTER_API_KEY
 
 # ── Öneri servisi ─────────────────────────────────────────────────
 from services.suggest_service import (
@@ -208,9 +208,9 @@ async def suggest_search(
 
 @router.get("/health")
 async def suggest_health():
-    """Model ve Ollama sağlık kontrolü."""
-    model_ok  = False
-    ollama_ok = False
+    """Model ve OpenRouter sağlık kontrolü."""
+    model_ok      = False
+    openrouter_ok = bool(OPENROUTER_API_KEY)
 
     try:
         _get_model()
@@ -218,19 +218,8 @@ async def suggest_health():
     except Exception:
         pass
 
-    try:
-        import urllib.request
-
-        def _check():
-            with urllib.request.urlopen(f"{OLLAMA_URL}/api/tags", timeout=2) as r:
-                return r.status == 200
-
-        ollama_ok = await asyncio.get_running_loop().run_in_executor(None, _check)
-    except Exception:
-        pass
-
     return {
-        "status":    "ok" if (model_ok and ollama_ok) else "degraded",
-        "model_ok":  model_ok,
-        "ollama_ok": ollama_ok,
+        "status":        "ok" if (model_ok and openrouter_ok) else "degraded",
+        "model_ok":      model_ok,
+        "openrouter_ok": openrouter_ok,
     }

@@ -199,15 +199,15 @@ export async function suggestSearch({
 // ════════════════════════════════════════════════════════════════
 
 /**
- * Suggest servisinin model + Ollama sağlığını kontrol eder.
- * @returns {Promise<{status, model_ok, ollama_ok}>}
+ * Suggest servisinin model + OpenRouter sağlığını kontrol eder.
+ * @returns {Promise<{status, model_ok, openrouter_ok}>}
  */
 export async function suggestHealth() {
   try {
     const res = await fetchWithTimeout(`${API_BASE}/suggest/health`, {}, 5_000);
     return await res.json();
   } catch (_) {
-    return { status: "unreachable", model_ok: false, ollama_ok: false };
+    return { status: "unreachable", model_ok: false, openrouter_ok: false };
   }
 }
 

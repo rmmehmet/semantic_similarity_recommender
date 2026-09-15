@@ -2,11 +2,8 @@
 """
 services/llm/llm_suggestion_service.py
 =======================================
-Ollama API üzerinden Llama 3.1 Q4 çağrıları.
-
-GPU kullanımını zorlamak için Ollama'yı şu şekilde başlat:
-  OLLAMA_GPU_LAYERS=99 ollama serve          (Linux/Mac)
-  set OLLAMA_GPU_LAYERS=99 && ollama serve   (Windows CMD)
+OpenRouter API üzerinden Llama 3.1 8B Instruct çağrıları
+(OpenAI-uyumlu /chat/completions uç noktası).
 
 İki dışa açık fonksiyon:
   - generate_topic_suggestion(input_text, search_type, similar_projects)
@@ -31,57 +28,48 @@ import urllib.request
 import urllib.error
 from typing import List, Dict, Any
 
-from services.config import OLLAMA_URL
+from services.config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_BASE_URL = OLLAMA_URL
-OLLAMA_MODEL    = "llama3.1:8b-instruct-q4_K_M"
-
 
 # ──────────────────────────────────────────────────────────────────
-# OLLAMA BAĞLANTI + ÇAĞRI
+# OPENROUTER BAĞLANTI + ÇAĞRI
 # ──────────────────────────────────────────────────────────────────
 
-def _ollama_available() -> bool:
-    """Ollama'nın ayakta olup olmadığını kontrol eder (3 sn timeout)."""
-    try:
-        req = urllib.request.urlopen(f"{OLLAMA_BASE_URL}/api/tags", timeout=3)
-        return req.status == 200
-    except Exception:
-        return False
+def _openrouter_available() -> bool:
+    """OPENROUTER_API_KEY .env'de ayarlanmış mı kontrol eder."""
+    return bool(OPENROUTER_API_KEY)
 
 
-def _call_ollama(system: str, user: str) -> str:
-    """
-    Ollama /api/chat endpoint'ini çağırır (stream=False).
-    GPU katmanları num_gpu=99 ile tamamen GPU'ya taşınır.
-    """
+def _call_openrouter(system: str, user: str, max_tokens: int = 1800) -> str:
+    """OpenRouter /chat/completions endpoint'ini çağırır (OpenAI-uyumlu)."""
+    if not OPENROUTER_API_KEY:
+        raise RuntimeError("OPENROUTER_API_KEY ayarlanmamış")
+
     payload = json.dumps({
-        "model": OLLAMA_MODEL,
+        "model": OPENROUTER_MODEL,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user",   "content": user},
         ],
-        "stream": False,
-        "options": {
-            "temperature":    0.75,
-            "top_p":          0.92,
-            "repeat_penalty": 1.1,
-            "num_predict":    1400,
-            "num_gpu":        99,   # tüm katmanları GPU'ya gönder
-        },
+        "temperature": 0.75,
+        "top_p":       0.92,
+        "max_tokens":  max_tokens,
     }).encode("utf-8")
 
     req = urllib.request.Request(
-        f"{OLLAMA_BASE_URL}/api/chat",
+        f"{OPENROUTER_BASE_URL}/chat/completions",
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type":  "application/json",
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        },
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=300) as resp:  # 5 dakika
         data = json.loads(resp.read().decode("utf-8"))
-        return data["message"]["content"].strip()
+        return data["choices"][0]["message"]["content"].strip()
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -104,10 +92,10 @@ def generate_topic_suggestion(
         topic_suggestions:[{title,rationale,novelty_score}],
         revised_title }
     """
-    if not _ollama_available():
+    if not _openrouter_available():
         return _err(
-            "Ollama bulunamadı",
-            "Ollama çalışmıyor. Windows'ta sistem tepsisinde Ollama ikonunu kontrol et.",
+            "OpenRouter API anahtarı yok",
+            "OPENROUTER_API_KEY .env dosyasında ayarlanmamış.",
         )
 
     # Yüksek benzerlik projeleri önce al, yoksa ilk 3
@@ -117,8 +105,8 @@ def generate_topic_suggestion(
     system, user = _build_suggest_messages(input_text, search_type, high)
 
     try:
-        logger.info("[LLM] Ollama çağrılıyor (text modu) — %s", OLLAMA_MODEL)
-        raw    = _call_ollama(system, user)
+        logger.info("[LLM] OpenRouter çağrılıyor (text modu) — %s", OPENROUTER_MODEL)
+        raw    = _call_openrouter(system, user)
         parsed = _parse_json(raw)
         logger.info("[LLM] Text yanıtı alındı")
         return {
@@ -131,7 +119,7 @@ def generate_topic_suggestion(
             "revised_title":    parsed.get("revised_title", ""),
         }
     except urllib.error.URLError as e:
-        return _err(str(e), "Ollama'ya bağlanılamadı.")
+        return _err(str(e), "OpenRouter'a bağlanılamadı.")
     except Exception as e:
         return _err(str(e), f"LLM hatası: {type(e).__name__}")
 
@@ -156,10 +144,10 @@ def generate_rag_analysis(
         similarity_analysis, original_aspects,
         improvement_suggestions, topic_suggestions, revised_title }
     """
-    if not _ollama_available():
+    if not _openrouter_available():
         return _err(
-            "Ollama bulunamadı",
-            "Ollama çalışmıyor. Windows'ta sistem tepsisinden Ollama'yı başlat.",
+            "OpenRouter API anahtarı yok",
+            "OPENROUTER_API_KEY .env dosyasında ayarlanmamış.",
         )
 
     high = [p for p in similar_projects if p.get("score", 0) >= 0.80]
@@ -168,8 +156,8 @@ def generate_rag_analysis(
     system, user = _build_rag_messages(pdf_full_text, pdf_title, high)
 
     try:
-        logger.info("[LLM] Ollama çağrılıyor (RAG modu) — %s", OLLAMA_MODEL)
-        raw    = _call_ollama(system, user)
+        logger.info("[LLM] OpenRouter çağrılıyor (RAG modu) — %s", OPENROUTER_MODEL)
+        raw    = _call_openrouter(system, user, max_tokens=2600)
         parsed = _parse_json(raw)
         logger.info("[LLM] RAG yanıtı alındı")
         return {
@@ -184,7 +172,7 @@ def generate_rag_analysis(
             "revised_title":           parsed.get("revised_title", ""),
         }
     except urllib.error.URLError as e:
-        return _err(str(e), "Ollama'ya bağlanılamadı.")
+        return _err(str(e), "OpenRouter'a bağlanılamadı.")
     except Exception as e:
         return _err(str(e), f"LLM hatası: {type(e).__name__}")
 

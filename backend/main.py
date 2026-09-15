@@ -32,7 +32,7 @@ from routers.database_router  import router as database_router
 from routers.pdf_router        import router as pdf_router
 from routers.suggest_router    import router as suggest_router
 from services.auth import get_current_user
-from services.config import CORS_ORIGINS, OLLAMA_URL
+from services.config import CORS_ORIGINS, OPENROUTER_API_KEY
 
 # ── Logging ──────────────────────────────────────────────────────
 # Windows konsolları varsayılan olarak UTF-8 olmayan bir codepage (örn.
@@ -143,21 +143,11 @@ async def startup():
     except Exception as exc:
         logger.error("[✗] Milvus başlatma hatası: %s", exc)
 
-    # 3. Ollama erişilebilirlik kontrolü (bloklamayan çağrı — thread pool'da)
-    try:
-        import urllib.request
-
-        def _check_ollama():
-            with urllib.request.urlopen(f"{OLLAMA_URL}/api/tags", timeout=3) as r:
-                return r.status
-
-        status = await asyncio.get_running_loop().run_in_executor(None, _check_ollama)
-        if status == 200:
-            logger.info("[✓] Ollama erişilebilir")
-        else:
-            logger.warning("[!] Ollama yanıt kodu: %d", status)
-    except Exception:
-        logger.warning("[!] Ollama erişilemiyor — LLM özellikleri çalışmayabilir")
+    # 3. OpenRouter API anahtarı kontrolü (ağ çağrısı yapılmaz — ücretsiz değil)
+    if OPENROUTER_API_KEY:
+        logger.info("[✓] OPENROUTER_API_KEY ayarlanmış")
+    else:
+        logger.warning("[!] OPENROUTER_API_KEY ayarlanmamış — LLM özellikleri çalışmayacak")
 
     # 4. Senkronize olmayan kayıtları raporla
     try:

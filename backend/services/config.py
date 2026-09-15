@@ -11,6 +11,16 @@ from __future__ import annotations
 
 import os
 
+# ── HuggingFace Hub ──────────────────────────────────────────────
+# Gömme modeli (paraphrase-multilingual-MiniLM-L12-v2) ilk çalıştırmada
+# indirilip yerel önbelleğe alınır. Varsayılan olarak offline moda
+# zorlanır — aksi halde sentence-transformers her istekte HuggingFace
+# Hub'a HEAD/GET istekleri atarak gereksiz gecikme ekler (LLM'e giden
+# isteklerden hemen önce görülen huggingface.co logları buradan gelir).
+# Modeli güncellemek/yeniden indirmek gerekirse .env'de HF_HUB_OFFLINE=0
+# yapılabilir.
+os.environ["HF_HUB_OFFLINE"] = os.getenv("HF_HUB_OFFLINE", "1")
+
 # ── CORS ─────────────────────────────────────────────────────────
 # Virgülle ayrılmış origin listesi, örn:
 #   CORS_ORIGINS=https://altayai.example.com,https://www.altayai.example.com
@@ -35,8 +45,15 @@ MAX_UPLOAD_BYTES: int = MAX_UPLOAD_MB * 1024 * 1024
 # ── Rate limiting ────────────────────────────────────────────────
 RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "20"))
 
-# ── Ollama ───────────────────────────────────────────────────────
-OLLAMA_URL: str = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434")
+# ── OpenRouter (LLM) ─────────────────────────────────────────────
+# Lokal Ollama yerine OpenRouter üzerinden Llama 3.1 8B Instruct çağrılır.
+# OPENROUTER_API_KEY ZORUNLUDUR — ayarlanmazsa LLM özellikleri devre dışı
+# kalır (bkz. services/llm/*.py). .env dosyası .gitignore'da olduğundan
+# anahtar asla repoya commit edilmez — sadece .env.example'da boş placeholder
+# tutulur.
+OPENROUTER_API_KEY: str | None = os.getenv("OPENROUTER_API_KEY") or None
+OPENROUTER_BASE_URL: str = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct")
 
 # ── Kullanıcı Auth (JWT) ─────────────────────────────────────────
 # JWT_SECRET ZORUNLUDUR — services/security.py import edilirken kontrol
