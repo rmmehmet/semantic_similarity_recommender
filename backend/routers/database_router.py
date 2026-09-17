@@ -19,6 +19,7 @@ from services.upload_validation import read_and_validate_pdf
 from services.text_preprocessing import (
     extract_title_from_pdf,
     extract_abstract_from_pdf,
+    extract_abstract_from_marked_text,
     extract_full_text_from_pdf,
 )
 from services.chunking_service import build_chunk_records
@@ -168,9 +169,15 @@ async def add_pdf(
     # Postgres yazımı), diskte DB kaydı olmayan "yetim" bir dosya kalmasın —
     # bu bloktaki her hatada diske yazılan dosyayı geri temizliyoruz.
     try:
-        title    = extract_title_from_pdf(pdf_bytes)    or ""
-        abstract = extract_abstract_from_pdf(pdf_bytes) or ""
+        title    = extract_title_from_pdf(pdf_bytes)     or ""
         fulltext = extract_full_text_from_pdf(pdf_bytes) or ""
+
+        # Önce section-marker tabanlı (font/başlık sinyaline dayanan, daha
+        # güvenilir) yöntem denenir; eşleşme bulunamazsa saf anahtar-kelime
+        # arama yöntemine (PDF'i ikinci kez ham metin olarak tarar) düşülür.
+        abstract = extract_abstract_from_marked_text(fulltext)
+        if not abstract:
+            abstract = extract_abstract_from_pdf(pdf_bytes) or ""
 
         # milvus_synced=FALSE olarak başlar
         paper_id = await pg_upsert_paper(

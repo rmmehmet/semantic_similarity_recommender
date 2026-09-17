@@ -139,6 +139,67 @@ def extract_abstract_from_pdf(pdf_bytes: bytes) -> str:
     finally:
         doc.close()
 
+
+# ══════════════════════════════════════════════════════════════════
+# ABSTRACT EXTRACTION — section-marker tabanlı (tercih edilen yöntem)
+# ══════════════════════════════════════════════════════════════════
+
+# extract_abstract_from_pdf() saf bir anahtar-kelime arama (lower_text.find)
+# kullanıyor — PDF'i ham metin olarak ikinci kez tarıyor, font/kalınlık
+# bilgisini hiç görmüyor. Oysa extract_full_text_from_pdf() zaten "Özet"/
+# "Abstract"/"Summary" başlığını _SECTION_KEYWORDS_RE ile font+numaralandırma
+# sinyaliyle doğru tespit edip <<<SECTION:Özet>>> olarak işaretliyor — bu
+# fonksiyon o işaretleyiciyi kullanarak abstract'ı çıkarır (daha güvenilir,
+# çünkü "ÖZET" büyük harfle ya da beklenmedik bir sırada yazılmış olsa bile
+# aynı başlık-tespit mekanizmasından geçmiş olur). Eşleşme bulunamazsa boş
+# string döner — çağıran taraf extract_abstract_from_pdf()'e (keyword
+# tabanlı, eski yöntem) fallback yapmalı.
+_ABSTRACT_SECTION_KEYWORD_RE = re.compile(r"özet|abstract|summary", re.IGNORECASE)
+
+# chunking_service.py'deki _MARKER_RE ile aynı kalıp — burada da işaretleyici
+# ayrıştırmak için ayrıca tanımlanıyor (iki modül arasında private import
+# yapılmıyor, kalıp basit ve stabil olduğu için kopyalamak daha temiz).
+_MARKER_RE = re.compile(r"<<<(SECTION|SUBSECTION|PAGE):(.*?)>>>")
+
+
+def extract_abstract_from_marked_text(marked_fulltext: str) -> str:
+    """
+    extract_full_text_from_pdf()'in döndürdüğü, <<<SECTION:..>>>/
+    <<<SUBSECTION:..>>>/<<<PAGE:n>>> işaretleyicileri gömülü metinden Özet/
+    Abstract/Summary bölümünün ham metnini çıkarır.
+
+    Sadece Özet/Abstract/Summary ile eşleşen İLK <<<SECTION:..>>>'dan bir
+    SONRAKİ <<<SECTION:..>>>'a kadar olan içerik toplanır — aradaki
+    <<<SUBSECTION:..>>>/<<<PAGE:n>>> işaretleyicileri (nadiren olsa da bir
+    özetin alt bölümü/sayfa geçişi olabilir) toplamayı KESMEZ, sadece yeni
+    bir üst-seviye SECTION toplamayı durdurur.
+
+    Eşleşme yoksa "" döner.
+    """
+    parts = _MARKER_RE.split(marked_fulltext)  # [önce, TİP, DEĞER, sonra, TİP, DEĞER, ...]
+
+    collecting = False
+    collected: list[str] = []
+    i = 1
+    while i + 1 < len(parts):
+        mtype, mval = parts[i], parts[i + 1]
+        segment = parts[i + 2] if i + 2 < len(parts) else ""
+
+        if mtype == "SECTION":
+            if collecting:
+                break  # bir sonraki gerçek bölüme geçildi — abstract bitti
+            if _ABSTRACT_SECTION_KEYWORD_RE.search(mval):
+                collecting = True
+
+        if collecting:
+            collected.append(segment)
+        i += 3
+
+    result = " ".join(collected)
+    result = re.sub(r"\s+", " ", result).strip()
+    return result
+
+
 # ══════════════════════════════════════════════════════════════════
 # FULL TEXT EXTRACTION — bölüm/sayfa farkındalığı ile
 # ══════════════════════════════════════════════════════════════════
