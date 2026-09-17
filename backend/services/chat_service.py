@@ -117,7 +117,27 @@ async def _prepare_messages(
 
     Döner: (messages, sources)
     """
-    query_vec = await _embed_async(message)
+    history = await pg_get_recent_messages(conversation_id, MAX_HISTORY_TURNS) if conversation_id else []
+
+    # Retrieval sorgusu bağlamsızlaştırma ("query contextualization") — takip
+    # sorularında ("Peki onun kısıtları nelerdi?") tek başına son mesaj embed
+    # edilirse zamirin/eksiltili ifadenin neyi işaret ettiği kaybolur, hem
+    # vektör hem anahtar kelime araması tamamen alakasız chunk'lar
+    # döndürebilir. Ucuz bir çözüm: son birkaç turu (varsa) mevcut mesajla
+    # birleştirip SADECE retrieval'a (embedding + anahtar kelime araması +
+    # rerank) onu vermek — tam bir LLM tabanlı sorgu yeniden yazımı değil,
+    # ama neredeyse maliyetsiz bir iyileştirme. LLM'e giden asıl prompttaki
+    # "Soru: {message}" DEĞİŞMEZ, orijinal mesaj olarak kalır.
+    RETRIEVAL_CONTEXT_TURNS = 2
+    retrieval_query = message
+    if history:
+        prior = " ".join(
+            turn.get("content", "") for turn in history[-RETRIEVAL_CONTEXT_TURNS:] if turn.get("content")
+        )
+        if prior:
+            retrieval_query = f"{prior} {message}"
+
+    query_vec = await _embed_async(retrieval_query)
 
     top_k = min(MAX_TOP_K, TOP_K_PER_DOC * len(pdf_names)) if pdf_names else TOP_K_GENERAL
     expr = _build_expr(user_id, pdf_names)
@@ -141,7 +161,7 @@ async def _prepare_messages(
 
     async def _keyword_search() -> list[dict]:
         try:
-            return await pg_keyword_search_chunks(user_id, message, pdf_names=pdf_names or None, limit=top_k)
+            return await pg_keyword_search_chunks(user_id, retrieval_query, pdf_names=pdf_names or None, limit=top_k)
         except Exception as exc:
             logger.warning("[Chat] Anahtar kelime arama hatası (user=%s): %s", user_id, exc)
             return []
@@ -154,7 +174,7 @@ async def _prepare_messages(
     if raw_hits:
         loop_r = asyncio.get_running_loop()
         order = await loop_r.run_in_executor(
-            None, partial(rerank, message, [h.get("text", "") for h in raw_hits]),
+            None, partial(rerank, retrieval_query, [h.get("text", "") for h in raw_hits]),
         )
         raw_hits = [raw_hits[i] for i in order]
 
@@ -195,8 +215,6 @@ async def _prepare_messages(
             })
 
     context = "\n\n".join(context_blocks) if context_blocks else "— İlgili bir alıntı bulunamadı —"
-
-    history = await pg_get_recent_messages(conversation_id, MAX_HISTORY_TURNS) if conversation_id else []
 
     messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
     for turn in history:
