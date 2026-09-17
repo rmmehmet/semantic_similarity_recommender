@@ -685,11 +685,15 @@ VITE_API_URL=http://localhost:8000
 Tracked honestly so they're not mistaken for oversights:
 
 - **No automated test suite / CI pipeline.** All verification is manual.
-- **No reranking or hybrid (keyword + vector) search** — retrieval is single-stage dense/HNSW only.
-- **No response streaming** — both Project Suggestion and PDF Chat wait for the full LLM response before returning anything to the client.
 - **No token/cost usage tracking** for OpenRouter calls beyond the per-minute request rate limiter.
-- **No section-aware chunking** — a paper's references/bibliography are not stripped before chunking/embedding, and chunks aren't tagged with which section (Introduction, Methods, …) they came from.
 - **Single-process rate limiting** — the in-memory limiter does not coordinate across multiple backend workers/instances; a Redis-backed limiter would be needed for horizontal scaling.
+
+Resolved since earlier iterations of this document:
+
+- **Hybrid (keyword + vector) search** — `services/hybrid_search.py` combines dense retrieval with keyword matching.
+- **LLM reranking** — `services/llm/reranker.py` reorders retrieved chunks before they're fed to the chat/suggestion LLM calls.
+- **Section-aware chunking** — `services/chunking_service.py` tags chunks with the section they came from (including Roman-numeral and single-letter heading formats) and excludes the references/bibliography section from chunking/embedding entirely.
+- **PDF Chat now streams responses** via Server-Sent Events instead of waiting for the full LLM reply.
 
 ---
 
