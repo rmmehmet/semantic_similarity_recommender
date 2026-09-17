@@ -12,9 +12,10 @@ _TR_ABBREVS = re.compile(
 # services/text_preprocessing.py'nin metne gömdüğü bölüm/sayfa işaretleyicileri.
 _MARKER_RE = re.compile(r"<<<(SECTION|SUBSECTION|PAGE):(.*?)>>>")
 
-# Kaynakça/Referanslar bölümündeki chunk'lar embed edilmez — akademik
-# benzerlik/orijinallik değerlendirmesinde iki projenin aynı kaynaklara atıf
-# yapması yanıltıcı bir "benzerlik" sinyalidir, içerik benzerliği değildir.
+# Kaynakça/Referanslar bölümündeki CÜMLELER embed edilmez (cümle seviyesinde
+# filtrelenir, bkz. chunk_fulltext) — akademik benzerlik/orijinallik
+# değerlendirmesinde iki projenin aynı kaynaklara atıf yapması yanıltıcı bir
+# "benzerlik" sinyalidir, içerik benzerliği değildir.
 _REFERENCES_SECTION_RE = re.compile(
     r"kaynak(?:ça)?|referanslar|references?|bibliography", re.IGNORECASE
 )
@@ -94,6 +95,19 @@ def chunk_fulltext(
 
     tagged = _tag_sentences(text)
 
+    # Kaynakça/Referanslar bölümüne ait cümleler chunk'lara gruplanmadan ÖNCE
+    # elenir (cümle seviyesinde) — chunk seviyesinde filtrelemek (eskiden
+    # burada yapılıyordu) güvenilmezdi: bir chunk karakter sayısına (size)
+    # göre kesildiği için kaynakça, önceki bölümle aynı chunk'a düşebiliyor
+    # ve o chunk'ın section'ı hâlâ ilk cümlenin (kaynakça olmayan) bölümünü
+    # taşıdığından filtre onu yakalayamıyordu — referanslar sessizce embed'e
+    # sızıyordu. section VEYA subsection kaynakça ise cümle tamamen atılır.
+    tagged = [
+        s for s in tagged
+        if not _REFERENCES_SECTION_RE.search(s["section"] or "")
+        and not _REFERENCES_SECTION_RE.search(s["subsection"] or "")
+    ]
+
     def _finalize(group: list[dict]) -> dict:
         pages = [s["page"] for s in group if s["page"] is not None]
         return {
@@ -124,12 +138,6 @@ def chunk_fulltext(
 
     if current:
         chunks.append(_finalize(current))
-
-    # Kaynakça/Referanslar bölümündeki chunk'ları at (bkz. yukarıdaki not).
-    # Bir chunk'ın section'ı, o chunk'ın İLK cümlesinin ait olduğu bölümdür —
-    # bu yüzden Kaynakça başlığının hemen öncesindeki geçiş chunk'ı (son
-    # gövde cümleleri + ilk birkaç atıf) yanlışlıkla atılmaz, tutulur.
-    chunks = [c for c in chunks if not _REFERENCES_SECTION_RE.search(c["section"] or "")]
 
     return chunks
 
