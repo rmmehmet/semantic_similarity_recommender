@@ -35,7 +35,7 @@ from services.database.postgres_service import (
     pg_keyword_search_chunks,
 )
 from services.hybrid_search import fuse_hits
-from services.text_preprocessing import extract_full_text_from_pdf, strip_markers
+from services.text_preprocessing import extract_full_text_from_pdf, extract_title_from_pdf, strip_markers
 from services.llm.llm_suggestion_service import (
     generate_topic_suggestion,
     generate_rag_analysis,
@@ -264,12 +264,21 @@ async def run_fulltext_search(
 
     raw_hits = fuse_hits(vector_hits, keyword_hits)
 
-    # ── 2. Paper bazında max-pooling ──────────────────────────────
+    # ── 2. Paper bazında havuzlama ─────────────────────────────────
+    # fuse_hits() ZATEN en alakalıdan en alakasıza sıralı döner (RRF).
+    # Eskiden burada "en yüksek cosine skorlu hit kazanır" mantığı vardı —
+    # ama SADECE anahtar kelimede bulunan (Milvus'ta hiç çıkmayan) bir
+    # hit'in cosine skoru YOK, hybrid_search.py'nin belgelediği gibi
+    # h.get("score", 0.0) her zaman 0.0'a düşüyordu; yani gerçek bir terim
+    # eşleşmesiyle bulunan bir makale, embedding'in yakaladığı herhangi bir
+    # rakibe karşı HER ZAMAN kaybediyordu — "hibrit" arama pratikte saf
+    # vektör aramasına indirgeniyordu. "İlk görülen kazanır" yaklaşımı
+    # fuse_hits()'in RRF sırasını (dolayısıyla gerçek hibrit alakayı)
+    # korur, tek bir sinyale (cosine) geri düşmez.
     best_by_pdf: Dict[str, Dict] = {}
     for h in raw_hits:
         pdf_name = h.get("pdf_name", "")
-        score    = float(h.get("score", 0.0))
-        if pdf_name not in best_by_pdf or score > best_by_pdf[pdf_name]["score"]:
+        if pdf_name and pdf_name not in best_by_pdf:
             best_by_pdf[pdf_name] = h
 
     # ── 3. Sonuç listesi ─────────────────────────────────────────
@@ -290,7 +299,9 @@ async def run_fulltext_search(
         item["page_end"]    = h.get("page_end") or None
         results.append(item)
 
-    results.sort(key=lambda x: x["score"], reverse=True)
+    # ARTIK ham cosine skoruna göre yeniden sıralanmıyor — best_by_pdf'in
+    # sırası zaten fuse_hits()'in RRF sıralamasını (gerçek hibrit alaka
+    # sırasını) yansıtıyor; yeniden sıralamak bunu tam olarak ezerdi.
     results = results[:top_k]
     results = await _enrich_pg(results, user_id)   # tek PG sorgusu — N+1 yok
 
@@ -299,9 +310,17 @@ async def run_fulltext_search(
     #        olduğu gibi kalır — sadece gösterim/RAG önceliği için kullanılır.
     if results:
         loop = asyncio.get_running_loop()
+        # matched_text 200 karaktere kesilmiş UI snippet'i — reranker'a onun
+        # yerine kesilmemiş rag_chunks[0] (kazanan chunk'ın tam metni)
+        # veriliyor, PDF Chat'teki (chat_service.py) yaklaşımla tutarlı
+        # olsun ve rerank çok daha az bağlamla çalışmasın diye.
+        rerank_inputs = [
+            (r.get("rag_chunks") or [""])[0] or r.get("matched_text") or r.get("raw_title", "")
+            for r in results
+        ]
         order = await loop.run_in_executor(
             None,
-            partial(rerank, query_text, [r.get("matched_text") or r.get("raw_title", "") for r in results]),
+            partial(rerank, query_text, rerank_inputs),
         )
         results = [results[i] for i in order]
 
@@ -359,7 +378,14 @@ async def run_fulltext_search(
             len(pdf_full_text),
         )
 
-    pdf_title = results[0].get("raw_title", "") if results else ""
+    # DİKKAT: `results` burada VERİTABANINDAKİ BENZER makaleler listesi —
+    # results[0]'ın başlığını almak (eskiden burada yapılıyordu) LLM'e
+    # kullanıcının KENDİ projesinin başlığı yerine EN BENZER BULUNAN mevcut
+    # makalenin başlığını gösteriyordu ("ANALİZ EDİLECEK PROJE: Başlık: ..."
+    # yanlış belgeyi işaret ediyordu). Gerçek başlık, PDF verilmişse
+    # doğrudan ondan çıkarılır; sadece metin sorgusuysa (PDF yok) başlık
+    # kavramı da yoktur, boş bırakılır.
+    pdf_title = extract_title_from_pdf(pdf_bytes) if pdf_bytes else ""
 
     # ── 6. RAG + LLM ─────────────────────────────────────────────
     loop = asyncio.get_running_loop()
