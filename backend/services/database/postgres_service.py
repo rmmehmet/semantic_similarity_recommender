@@ -292,8 +292,16 @@ async def pg_keyword_search_chunks(
     bu kullanıcının fulltext chunk'ları içinde arar; pdf_names verilirse ona
     da sınırlanır. bkz. services/hybrid_search.py::fuse_hits.
 
+    İki tsvector kolonu birden sorgulanır: `tsv` ('simple' config — ham kelime
+    eşleşmesi, İngilizce terimlerde güvenli) ve `tsv_turkish` ('turkish'
+    config — Türkçe ek/kök varyasyonlarını yakalar, örn. öğrenme/öğrenmeyi).
+    İkisi tek bir stemmer'a zorlanmıyor çünkü akademik metin Türkçe/İngilizce
+    karışık; Türkçe stemmer İngilizce kelimelere uygulanırsa yanlış kök
+    bulma riski taşır (bkz. migration c1a2b3d4e5f6). Bir chunk her iki
+    config'te de eşleşirse en yüksek rank kullanılır (GREATEST).
+
     Döner: [{pdf_name, chunk_idx, text, section, subsection, page_start,
-             page_end, keyword_rank}, ...] — ts_rank'e göre azalan sıralı.
+             page_end, keyword_rank}, ...] — keyword_rank'e göre azalan sıralı.
     "text" alanı Milvus hit'leriyle aynı adı taşır (fuse_hits ile doğrudan
     birleştirilebilsin diye); "score" DEĞİL "keyword_rank" adı kasıtlıdır —
     bkz. hybrid_search.py'deki not (cosine skoruyla karıştırılmamalı).
@@ -309,12 +317,16 @@ async def pg_keyword_search_chunks(
                 """
                 SELECT p.pdf_name, c.chunk_idx, c.chunk_text AS text,
                        c.section, c.subsection, c.page_start, c.page_end,
-                       ts_rank(c.tsv, plainto_tsquery('simple', $2)) AS keyword_rank
+                       GREATEST(
+                           ts_rank(c.tsv,         plainto_tsquery('simple',  $2)),
+                           ts_rank(c.tsv_turkish, plainto_tsquery('turkish', $2))
+                       ) AS keyword_rank
                 FROM   chunks c
                 JOIN   papers p ON p.id = c.paper_id
                 WHERE  p.user_id = $1 AND c.chunk_type = 'fulltext'
                        AND p.pdf_name = ANY($3::text[])
-                       AND c.tsv @@ plainto_tsquery('simple', $2)
+                       AND (c.tsv @@ plainto_tsquery('simple', $2)
+                            OR c.tsv_turkish @@ plainto_tsquery('turkish', $2))
                 ORDER  BY keyword_rank DESC
                 LIMIT  $4
                 """,
@@ -325,11 +337,15 @@ async def pg_keyword_search_chunks(
                 """
                 SELECT p.pdf_name, c.chunk_idx, c.chunk_text AS text,
                        c.section, c.subsection, c.page_start, c.page_end,
-                       ts_rank(c.tsv, plainto_tsquery('simple', $2)) AS keyword_rank
+                       GREATEST(
+                           ts_rank(c.tsv,         plainto_tsquery('simple',  $2)),
+                           ts_rank(c.tsv_turkish, plainto_tsquery('turkish', $2))
+                       ) AS keyword_rank
                 FROM   chunks c
                 JOIN   papers p ON p.id = c.paper_id
                 WHERE  p.user_id = $1 AND c.chunk_type = 'fulltext'
-                       AND c.tsv @@ plainto_tsquery('simple', $2)
+                       AND (c.tsv @@ plainto_tsquery('simple', $2)
+                            OR c.tsv_turkish @@ plainto_tsquery('turkish', $2))
                 ORDER  BY keyword_rank DESC
                 LIMIT  $3
                 """,
