@@ -52,6 +52,23 @@ def _openrouter_available() -> bool:
     return openrouter_available()
 
 
+def _truncate_at_boundary(text: str, max_len: int) -> str:
+    """
+    text[:max_len] gibi ortadan (kelime/cümle içinden) kesmek yerine, mümkünse
+    son cümle sınırında keser — LLM'e yarım bir cümleyle biten, anlamı bozuk
+    bir girdi gitmesin diye (bkz. chunking_service.py::chunk_abstract'taki
+    aynı mantık). Uygun bir sınır bulunamazsa (çok kısa metinde erken bir
+    noktaya denk gelirse) düz karakter kesimine geri döner.
+    """
+    if len(text) <= max_len:
+        return text
+    cut = text[:max_len]
+    last_end = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
+    if last_end > max_len * 0.3:
+        cut = text[:last_end + 1]
+    return cut.strip()
+
+
 def _call_openrouter(system: str, user: str, max_tokens: int = 1800) -> str:
     return call_openrouter(
         messages=[
@@ -201,7 +218,7 @@ def _build_suggest_messages(
     )
 
     user = f"""Kullanıcı Projesi ({label}):
-\"\"\"{text[:900]}\"\"\"
+\"\"\"{_truncate_at_boundary(text, 900)}\"\"\"
 
 Benzer projeler (veritabanından):
 {benzer_list}

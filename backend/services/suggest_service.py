@@ -35,7 +35,7 @@ from services.database.postgres_service import (
     pg_keyword_search_chunks,
 )
 from services.hybrid_search import fuse_hits
-from services.text_preprocessing import extract_full_text_from_pdf
+from services.text_preprocessing import extract_full_text_from_pdf, strip_markers
 from services.llm.llm_suggestion_service import (
     generate_topic_suggestion,
     generate_rag_analysis,
@@ -346,10 +346,14 @@ async def run_fulltext_search(
             )
 
     # ── 5. PDF tam metni ─────────────────────────────────────────
+    # extract_full_text_from_pdf() <<<SECTION:..>>>/<<<PAGE:n>>> işaretleyicileri
+    # gömülü metin döner (chunking_service bunları ayrıştırıp metadata'ya
+    # çevirir) — burada chunklama YAPILMADIĞI için, LLM'e ham marker'lı metin
+    # gitmesin diye strip_markers() ile temizleniyor (bkz. text_preprocessing.py).
     pdf_full_text = query_text
     if pdf_bytes:
         extracted = extract_full_text_from_pdf(pdf_bytes) or query_text
-        pdf_full_text = extracted
+        pdf_full_text = strip_markers(extracted)
         logger.info(
             "[Suggest/fulltext] PDF tam metni çıkarıldı — %d karakter",
             len(pdf_full_text),

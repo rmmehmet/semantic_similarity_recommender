@@ -47,6 +47,17 @@ TOP_K_PER_DOC   = 4    # seçilen her PDF için alınacak chunk sayısı
 MAX_TOP_K       = 24
 MAX_HISTORY_TURNS = 10
 
+# Milvus (COSINE) top_k araması, sorgu ne kadar alakasız olursa olsun HER
+# ZAMAN top_k sonuç döner (en yakın komşu araması "sonuç yok" demez, en
+# yakını ne kadar uzaksa da onu döner) — bu eşiğin altındaki vektör
+# sonuçları hibrit füzyona (fuse_hits) girmeden ATILIR, aksi halde alakasız
+# bir soruda bile LLM'e "bulunan" ama aslında konuyla ilgisiz chunk'lar
+# context olarak gidiyordu (halüsinasyon riskini artırıyordu). Anahtar
+# kelime (Postgres FTS) sonuçları bu filtreye TABİ DEĞİL — zaten @@ operatörü
+# gerçek bir terim eşleşmesi gerektirdiğinden, varlığının kendisi zaten bir
+# alaka sinyalidir, ek bir sayısal eşiğe ihtiyaç yok.
+MIN_VECTOR_SCORE = 0.35
+
 SYSTEM_PROMPT = (
     "Sen AltayAI'nin belge sohbet asistanısın. Kullanıcının kendi yüklediği "
     "PDF belgelerinden (akademik proje/bildiri) alınan alıntılara dayanarak "
@@ -116,13 +127,14 @@ async def _prepare_messages(
     # İkisi de best-effort: biri hata verirse diğeriyle devam edilir.
     async def _vector_search() -> list[dict]:
         try:
-            return await _milvus_search_async(
+            hits = await _milvus_search_async(
                 collection_name=COL_FULLTEXT,
                 query_vector=query_vec,
                 top_k=top_k,
                 output_fields=["pdf_name", "chunk_idx", "text", "section", "subsection", "page_start", "page_end"],
                 expr=expr,
             )
+            return [h for h in hits if h.get("score", 0) >= MIN_VECTOR_SCORE]
         except Exception as exc:
             logger.error("[Chat] Milvus arama hatası (user=%s): %s", user_id, exc)
             return []

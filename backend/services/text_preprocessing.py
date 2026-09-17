@@ -162,6 +162,23 @@ _ABSTRACT_SECTION_KEYWORD_RE = re.compile(r"özet|abstract|summary", re.IGNORECA
 _MARKER_RE = re.compile(r"<<<(SECTION|SUBSECTION|PAGE):(.*?)>>>")
 
 
+def strip_markers(marked_text: str) -> str:
+    """
+    <<<SECTION:..>>>/<<<SUBSECTION:..>>>/<<<PAGE:n>>> işaretleyicilerini
+    tamamen siler — chunking_service.py bunları KORUYARAK (section/page
+    metadata'sına çevirerek) ayrıştırıyor, ama işaretleyicilerin hiç
+    ayrıştırılmadan, ham metin olarak bir LLM prompt'una ya da kullanıcıya
+    gösterileceği yerlerde (örn. Project Suggestion RAG modunun analiz
+    ettiği, kullanıcının yüklediği PDF'in tam metni) bu bilgiye gerek yok —
+    marker'lar sadece gürültü ve boşa harcanan token'dır. Bu fonksiyon
+    section/page bilgisini ATAR, sadece görünür metni bırakır.
+    """
+    cleaned = _MARKER_RE.sub("", marked_text)
+    cleaned = re.sub(r"[ \t]+", " ", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
 def extract_abstract_from_marked_text(marked_fulltext: str) -> str:
     """
     extract_full_text_from_pdf()'in döndürdüğü, <<<SECTION:..>>>/
