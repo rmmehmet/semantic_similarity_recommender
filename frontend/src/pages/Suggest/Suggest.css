@@ -37,7 +37,7 @@ ul     { list-style: none; }
 .sug-nav {
   position: fixed; top: 0; left: 0; right: 0; z-index: 100;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 15px 48px;
+  padding: 0 40px; height: 60px;
   background: rgba(7,11,15,0.94); backdrop-filter: blur(24px);
   border-bottom: 1px solid var(--border);
 }
@@ -62,7 +62,7 @@ ul     { list-style: none; }
 
 /* ══ Header ══════════════════════════════════════════════════════ */
 .sug-header {
-  position: relative; padding: 110px 0 48px; overflow: hidden;
+  position: relative; padding: 108px 0 48px; overflow: hidden;
   border-bottom: 1px solid var(--border);
 }
 .sug-header__bg-grid {

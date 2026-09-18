@@ -43,24 +43,24 @@
 .chat-nav {
   position: fixed; top: 0; left: 0; right: 0; z-index: 100;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 32px;
+  padding: 0 40px; height: 60px;
   background: rgba(8,12,16,0.85);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
 }
 .chat-nav__logo { display: flex; align-items: center; gap: 8px; }
 .chat-logo-hex {
-  width: 28px; height: 28px; background: var(--cyan); color: var(--bg);
+  width: 30px; height: 30px; background: var(--cyan); color: var(--bg);
   display: flex; align-items: center; justify-content: center;
   font-weight: 800; font-size: 13px;
   clip-path: polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);
 }
-.chat-nav__brand { font-size: 16px; font-weight: 700; letter-spacing: .06em; color: var(--text); }
+.chat-nav__brand { font-size: 17px; font-weight: 700; letter-spacing: .06em; color: var(--text); }
 .chat-nav__brand em { color: var(--cyan); font-style: normal; }
 .chat-nav__links { display: flex; gap: 4px; }
 .chat-nav__link {
-  padding: 7px 13px; font-size: 12.5px; font-weight: 600;
-  letter-spacing: .04em; color: var(--muted);
+  padding: 7px 14px; font-size: 13px; font-weight: 600;
+  letter-spacing: .05em; color: var(--muted);
   border-radius: 6px; transition: color .15s, background .15s;
 }
 .chat-nav__link:hover { color: var(--text); background: rgba(255,255,255,0.04); }
@@ -76,7 +76,7 @@
   flex: 1;
   min-height: 0;
   display: flex;
-  padding-top: 64px;
+  padding-top: 60px;
   overflow: hidden;
 }
 

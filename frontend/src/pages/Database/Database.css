@@ -49,8 +49,8 @@
      için sayfa uzayınca (örn. çok sayıda PDF) navbar'ın konumu diğer
      sayfalarla tutarsız görünüyordu. Aynı davranışa hizalandı. */
   position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-  display: flex; align-items: center; gap: 12px;
-  padding: 0 28px; height: 56px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 0 40px; height: 60px;
   background: rgba(10,10,15,.92);
   backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--db-border);
@@ -61,20 +61,24 @@
   border: none; background: none; font-family: inherit; padding: 0;
 }
 .db-logo-hex {
-  width: 28px; height: 28px;
+  width: 30px; height: 30px;
   display: grid; place-items: center;
   background: var(--db-amber);
   color: #000; font-weight: 700; font-size: 13px;
   clip-path: polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);
 }
-.db-nav__brand { font-size: 15px; font-weight: 600; letter-spacing: -.3px; color: var(--db-text); }
+.db-nav__brand { font-size: 17px; font-weight: 600; letter-spacing: -.3px; color: var(--db-text); }
 .db-nav__brand em { font-style: normal; color: var(--db-amber); }
 .db-nav__links {
-  display: flex; gap: 4px; list-style: none; margin-left: auto;
+  /* margin-left:auto KALDIRILDI — diğer sayfalarda (Suggest/PdfSplitter/
+     Chat) linkler nav'ın justify-content:space-between'i ile ortada
+     duruyordu, burada linkler sağa yapışıyordu. Aynı desene hizalandı. */
+  display: flex; gap: 4px; list-style: none;
 }
 .db-nav__link {
   background: none; border: none; cursor: pointer;
-  color: var(--db-muted); font-size: 13px; padding: 6px 12px;
+  color: var(--db-muted); font-size: 13px; font-weight: 600;
+  letter-spacing: .05em; padding: 7px 14px;
   border-radius: 6px; transition: color .15s, background .15s;
 }
 .db-nav__link:hover { color: var(--db-text); background: var(--db-surface); }
@@ -106,7 +110,7 @@
   /* Üst boşluk artık navbar'ın (56px, position:fixed) yüksekliğini de
      kapsıyor — nav artık akışın dışında olduğu için içerik onun altına
      kaymasın diye. */
-  padding: 104px 28px 36px;
+  padding: 108px 28px 36px;
   border-bottom: 1px solid var(--db-border);
 }
 .db-header__bg-grid {
