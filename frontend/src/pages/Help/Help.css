@@ -1,0 +1,97 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Help.css — AltayAI Yardım & SSS
+   Tema: Sinematik koyu · Violet vurgu (diğer sayfalarla aynı görsel dil)
+═══════════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+.hlp-root {
+  --bg:       #080C10;
+  --bg2:      #0C1118;
+  --surface:  #111820;
+  --border:   rgba(255,255,255,0.08);
+  --violet:   #A78BFA;
+  --text:     #E8EDF2;
+  --muted:    #6B7E92;
+
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Syne', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+.hlp-root *, .hlp-root *::before, .hlp-root *::after { box-sizing: border-box; }
+.hlp-root button { cursor: pointer; font-family: inherit; border: none; background: none; color: inherit; }
+
+/* ══ Navbar (diğer sayfalarla birebir aynı ölçüler) ══════════════ */
+.hlp-nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 40px; height: 60px;
+  background: rgba(8,12,16,0.92);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+}
+.hlp-nav__logo { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+.hlp-logo-hex {
+  width: 30px; height: 30px; background: var(--violet); color: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 14px;
+  clip-path: polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);
+}
+.hlp-nav__brand { font-size: 17px; font-weight: 700; letter-spacing: .06em; color: var(--text); }
+.hlp-nav__brand em { color: var(--violet); font-style: normal; }
+.hlp-nav__links { display: flex; gap: 4px; list-style: none; }
+.hlp-nav__link {
+  padding: 7px 14px; font-size: 13px; font-weight: 600;
+  letter-spacing: .05em; color: var(--muted);
+  border-radius: 6px; transition: color .15s, background .15s;
+}
+.hlp-nav__link:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+.hlp-nav__burger { display: none; flex-direction: column; gap: 4px; padding: 8px; }
+.hlp-nav__burger span { width: 20px; height: 2px; background: var(--muted); border-radius: 2px; }
+
+/* ══ Header ═══════════════════════════════════════════════════════ */
+.hlp-header { padding: 108px 40px 32px; border-bottom: 1px solid var(--border); }
+.hlp-breadcrumb {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--muted); margin-bottom: 14px;
+}
+.hlp-breadcrumb svg { width: 9px; opacity: .5; }
+.hlp-breadcrumb span { color: var(--violet); }
+.hlp-header__title { font-size: 32px; font-weight: 800; letter-spacing: -.02em; margin-bottom: 8px; }
+.hlp-header__title em { color: var(--violet); font-style: normal; }
+.hlp-header__sub { font-size: 14px; color: var(--muted); }
+
+/* ══ FAQ Accordion ════════════════════════════════════════════════ */
+.hlp-layout { max-width: 720px; margin: 0 auto; padding: 32px 40px 60px; display: flex; flex-direction: column; gap: 10px; }
+
+.hlp-item {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; overflow: hidden;
+  transition: border-color .15s;
+}
+.hlp-item.open { border-color: rgba(167,139,250,0.35); }
+
+.hlp-item__q {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 16px 18px; font-size: 14px; font-weight: 700; text-align: left;
+}
+.hlp-item__chevron { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); transition: transform .2s; }
+.hlp-item.open .hlp-item__chevron { transform: rotate(180deg); color: var(--violet); }
+
+.hlp-item__a {
+  padding: 0 18px 16px; font-size: 13px; line-height: 1.65; color: var(--muted);
+}
+
+@media (max-width: 860px) {
+  .hlp-nav__links { display: none; }
+  .hlp-nav__burger { display: flex; }
+  .hlp-nav__links.open {
+    display: flex; flex-direction: column;
+    position: absolute; top: 60px; left: 0; right: 0;
+    background: var(--bg2); border-bottom: 1px solid var(--border);
+    padding: 12px;
+  }
+  .hlp-header, .hlp-layout { padding-left: 20px; padding-right: 20px; }
+}

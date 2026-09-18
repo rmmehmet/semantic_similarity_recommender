@@ -4,6 +4,8 @@ import PdfSplitter from "./pages/PdfSplitter/PdfSplitter";
 import Chat        from "./pages/Chat/Chat";
 import Suggest     from "./pages/Suggest/Suggest";
 import Database from "./pages/Database/Database";
+import Settings from "./pages/Settings/Settings";
+import Help     from "./pages/Help/Help";
 import Login    from "./pages/Auth/Login";
 import Register from "./pages/Auth/Register";
 import ProtectedRoute from "./ProtectedRoute";
@@ -19,6 +21,8 @@ export default function App() {
       <Route path="/chat"     element={<ProtectedRoute><Chat /></ProtectedRoute>}        />
       <Route path="/suggest"  element={<ProtectedRoute><Suggest /></ProtectedRoute>}     />
       <Route path="/database" element={<ProtectedRoute><Database /></ProtectedRoute>}    />
+      <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>}    />
+      <Route path="/help"     element={<ProtectedRoute><Help /></ProtectedRoute>}        />
     </Routes>
   );
 }

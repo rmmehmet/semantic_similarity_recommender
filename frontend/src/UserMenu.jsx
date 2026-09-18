@@ -86,6 +86,31 @@ export default function UserMenu() {
           <div style={{ padding: "6px 10px", fontSize: 11, color: "#6B7E92", wordBreak: "break-all" }}>
             {user.email}
           </div>
+
+          <MenuItem
+            label="Ayarlar"
+            onClick={() => { setOpen(false); navigate("/settings"); }}
+            icon={
+              <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
+                <circle cx="8" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M8 1.5v1.6M8 12.9v1.6M14.5 8h-1.6M3.1 8H1.5M12.5 3.5l-1.1 1.1M4.6 11.4l-1.1 1.1M12.5 12.5l-1.1-1.1M4.6 4.6L3.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+              </svg>
+            }
+          />
+          <MenuItem
+            label="Yardım"
+            onClick={() => { setOpen(false); navigate("/help"); }}
+            icon={
+              <svg viewBox="0 0 16 16" fill="none" width="14" height="14">
+                <circle cx="8" cy="8" r="6.3" stroke="currentColor" strokeWidth="1.4" />
+                <path d="M6.2 6.1a1.8 1.8 0 113 1.3c-.5.4-1.2.7-1.2 1.6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                <circle cx="8" cy="11.4" r=".75" fill="currentColor" />
+              </svg>
+            }
+          />
+
+          <div style={{ height: 1, background: "rgba(255,255,255,0.08)", margin: "6px 2px" }} />
+
           <button
             onClick={handleLogout}
             style={{
@@ -107,5 +132,32 @@ export default function UserMenu() {
         </div>
       )}
     </div>
+  );
+}
+
+function MenuItem({ label, icon, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        width: "100%",
+        display: "flex",
+        alignItems: "center",
+        gap: 9,
+        textAlign: "left",
+        padding: "8px 10px",
+        borderRadius: 6,
+        fontSize: 13,
+        color: "#E8EDF2",
+        cursor: "pointer",
+        background: "transparent",
+        transition: "background .12s",
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+    >
+      <span style={{ display: "flex", color: "#6B7E92" }}>{icon}</span>
+      {label}
+    </button>
   );
 }
