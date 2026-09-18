@@ -18,7 +18,7 @@ function Navbar() {
     { label: "PDF Bölme", path: "/split" },
     { label: "PDF Sohbet", path: "/chat" },
     { label: "Proje Öneri", path: "/suggest" },
-    { label: "Veritabanı",      path: "/database", icon: "⬡" },
+    { label: "Kütüphanem",      path: "/database", icon: "⬡" },
   ];
   return (
     <nav className="ps-nav">

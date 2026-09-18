@@ -16,7 +16,7 @@ const NAV_LINKS = [
   ["PDF Bölme", "/split"],
   ["PDF Sohbet", "/chat"],
   ["Proje Öneri", "/suggest"],
-  ["Veritabanı", "/database"],
+  ["Kütüphanem", "/database"],
 ];
 
 const EXAMPLE_PROMPTS = [

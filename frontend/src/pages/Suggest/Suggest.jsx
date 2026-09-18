@@ -55,7 +55,7 @@ function Navbar() {
         <span className="sug-nav__brand">Altay<em>AI</em></span>
       </button>
       <ul className={`sug-nav__links${open ? " open" : ""}`}>
-        {[["PDF Bölme","/split"],["PDF Sohbet","/chat"],["Proje Öneri","/suggest"],["Veritabanı","/database"]].map(([l,p]) => (
+        {[["PDF Bölme","/split"],["PDF Sohbet","/chat"],["Proje Öneri","/suggest"],["Kütüphanem","/database"]].map(([l,p]) => (
           <li key={p}>
             <button className={`sug-nav__link${p==="/suggest"?" active":""}`}
               onClick={() => { navigate(p); setOpen(false); }}>{l}</button>
@@ -342,9 +342,9 @@ function LLMPanel({ data, highCount }) {
           </div>
           <div>
             <div className="sug-llm-panel__title">
-              {isRag ? "RAG Derin Analiz" : "LLM Konu Önerisi"}
+              {isRag ? "Derin Analiz" : "Konu Önerisi"}
               <span className="sug-llm-panel__model-badge">
-                {isRag ? "RAG + Llama 3.1 Q4" : "Llama 3.1 Q4"}
+                Yapay Zeka
               </span>
             </div>
             <div className="sug-llm-panel__sub">
@@ -352,7 +352,7 @@ function LLMPanel({ data, highCount }) {
                 ? isRag
                   ? `PDF analizi tamamlandı · ${highCount} benzer proje ile karşılaştırıldı`
                   : `${highCount} yüksek benzerlik · Aynı alanda özgün konu önerileri`
-                : "LLM modeli yüklenemedi"}
+                : "Analiz şu anda yapılamıyor"}
             </div>
           </div>
         </div>
@@ -415,7 +415,7 @@ function LLMPanel({ data, highCount }) {
             <div className="sug-analysis">
               <div className="sug-analysis__eyebrow">
                 <span className="sug-analysis__dot"/>
-                Benzerlik Analizi (RAG)
+                Benzerlik Analizi
               </div>
               <p className="sug-analysis__text">{data.similarity_analysis}</p>
             </div>
@@ -509,9 +509,9 @@ function LLMPanel({ data, highCount }) {
 // ── Pipeline Adım Göstergesi ───────────────────────────────────────
 function PipelineProgress({ step }) {
   const STEPS = [
-    { n: 1, label: "BERT embedding hesaplanıyor"   },
-    { n: 2, label: "Milvus vektör tabanı aranıyor" },
-    { n: 3, label: "Llama 3.1 Q4 öneri üretiyor"   },
+    { n: 1, label: "Metin analiz ediliyor"     },
+    { n: 2, label: "Benzer projeler aranıyor"  },
+    { n: 3, label: "Öneriler oluşturuluyor"    },
   ];
   return (
     <div className="sug-loading">
@@ -582,7 +582,7 @@ function EmptyState({ mode }) {
           : "Tam metni veya PDF'i yükleyerek kapsamlı benzerlik analizi yapın."}
       </p>
       <div className="sug-empty__pipeline">
-        {["Metin Al","BERT Embed","Milvus Ara","LLM Öner"].map((s,i) => (
+        {["Metni Al","Analiz Et","Kütüphanede Ara","Öneri Sun"].map((s,i) => (
           <div key={s} className="sug-empty__step">
             <div className="sug-empty__step-num">{i+1}</div>
             <span>{s}</span>
@@ -665,13 +665,13 @@ export default function Suggest() {
           </div>
           <h1 className="sug-header__title">Proje <em>Öneri</em> Sistemi</h1>
           <p className="sug-header__sub">
-            BERT semantik arama · Milvus vektör DB · Llama 3.1 Q4 lokal konu önerisi
+            Anlamsal arama ve yapay zeka destekli özgünlük analizi
           </p>
           <div className="sug-header__pills">
-            <span className="sug-pill sug-pill--green">sentence-BERT</span>
-            <span className="sug-pill">Milvus</span>
-            <span className="sug-pill">Llama 3.1 Q4</span>
-            <span className="sug-pill">%80+ eşiği</span>
+            <span className="sug-pill sug-pill--green">Anlamsal Arama</span>
+            <span className="sug-pill">Akıllı Analiz</span>
+            <span className="sug-pill">Özgünlük Kontrolü</span>
+            <span className="sug-pill">%80+ Eşik</span>
           </div>
         </div>
       </div>
@@ -782,7 +782,7 @@ export default function Suggest() {
 
           {/* BERT eşik bilgisi */}
           <div className="sug-panel sug-panel--info">
-            <div className="sug-panel__label">BERT Eşik Değerleri</div>
+            <div className="sug-panel__label">Benzerlik Eşik Değerleri</div>
             <div className="sug-threshold-list">
               {[
                 {l:"Yüksek", v:"≥ %80", color:"#EF4444", note:"LLM öneri devreye girer"},
@@ -866,8 +866,8 @@ export default function Suggest() {
                 ))}
                 {results.total===0 && (
                   <div className="sug-no-results">
-                    <p>Milvus'ta kayıtlı benzer proje bulunamadı.</p>
-                    <span>Veritabanı boş olabilir veya eşik çok yüksek.</span>
+                    <p>Kütüphanenizde kayıtlı benzer proje bulunamadı.</p>
+                    <span>Kütüphaneniz boş olabilir veya eşik çok yüksek.</span>
                   </div>
                 )}
               </div>

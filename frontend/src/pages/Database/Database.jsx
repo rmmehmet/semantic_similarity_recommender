@@ -24,7 +24,7 @@ function Navbar() {
     ["PDF Bölme", "/split"],
     ["PDF Sohbet", "/chat"],
     ["Proje Öneri", "/suggest"],
-    ["Veritabanı", "/database"],
+    ["Kütüphanem", "/database"],
   ];
   return (
     <nav className="db-nav">
@@ -141,7 +141,7 @@ function PdfDropZone({ files, onFiles }) {
             </svg>
           </div>
           <p className="db-drop__label">PDF dosyalarını sürükle veya tıkla</p>
-          <p className="db-drop__sub">Birden fazla PDF · Otomatik BERT indeksleme</p>
+          <p className="db-drop__sub">Birden fazla PDF · Otomatik olarak işlenir</p>
         </div>
       ) : (
         <div className="db-drop__filelist" onClick={(e) => e.stopPropagation()}>
@@ -180,7 +180,7 @@ function uploadResultDisplay(result) {
       return {
         icon: "✓",
         cls: "ok",
-        text: `✓ ${result.chunks ?? 0} chunk · ${result.title?.slice(0, 60) || ""}`,
+        text: `✓ İşlendi · ${result.title?.slice(0, 60) || ""}`,
       };
     case "skipped":
       return { icon: "•", cls: "skip", text: "Zaten yüklü — atlandı (aynı isim, aynı içerik)" };
@@ -420,12 +420,12 @@ function DetailPanel({ pdfName, onClose, onPreview }) {
     setTimeout(() => setCopied(false), 1800);
   };
 
-  // Chunk'ın Milvus'ta nasıl tutulduğunu açıklayan renk/etiket
+  // Sekmeye göre gösterilen kategori renk/etiketi
   const storageLabel = {
-    title:    { label: "liftup_titles",    color: "#00D4FF" },
-    abstract: { label: "liftup_abstracts", color: "#A78BFA" },
-    fulltext: { label: "liftup_fulltext",  color: "#34D399" },
-    chunks:   { label: "liftup_fulltext",  color: "#34D399" },
+    title:    { label: "Başlık",           color: "#00D4FF" },
+    abstract: { label: "Özet",             color: "#A78BFA" },
+    fulltext: { label: "Tam Metin",        color: "#34D399" },
+    chunks:   { label: "İçerik Parçaları", color: "#34D399" },
   }[tab];
 
   return (
@@ -472,10 +472,10 @@ function DetailPanel({ pdfName, onClose, onPreview }) {
             )}
             {fulltextChunks.length > 0 && (
               <span className="db-modal__badge db-modal__badge--green">
-                {fulltextChunks.length} chunk
+                {fulltextChunks.length} parça
               </span>
             )}
-            {/* Milvus storage göstergesi */}
+            {/* Kategori göstergesi */}
             <span
               className="db-modal__badge db-modal__badge--storage"
               style={{ borderColor: storageLabel.color, color: storageLabel.color }}
@@ -495,7 +495,7 @@ function DetailPanel({ pdfName, onClose, onPreview }) {
             ["title",    "Başlık",    "1 kayıt"],
             ["abstract", "Özet",      "1 kayıt"],
             ["fulltext", "Tam Metin", "ham metin"],
-            ["chunks",   "Chunk'lar", fulltextChunks.length + " parça"],
+            ["chunks",   "İçerik Parçaları", fulltextChunks.length + " parça"],
           ].map(([k, l, hint]) => (
             <button
               key={k}
@@ -542,7 +542,7 @@ function DetailPanel({ pdfName, onClose, onPreview }) {
                       <span className="db-chunk-card__len">
                         {chunk.chunk_text.length} karakter
                       </span>
-                      <span className="db-chunk-card__type">liftup_fulltext</span>
+                      <span className="db-chunk-card__type">Metin Parçası</span>
                     </div>
                     <p className="db-chunk-card__text">{chunk.chunk_text}</p>
                   </div>
@@ -554,24 +554,21 @@ function DetailPanel({ pdfName, onClose, onPreview }) {
           )}
         </div>
 
-        {/* Alt bilgi — Milvus yapısı açıklaması */}
+        {/* Alt bilgi — bu belge nasıl kullanılabilir */}
         {!loading && data && (
           <div className="db-modal__footer">
             <div className="db-storage-explain">
               <div className="db-storage-explain__item">
                 <span className="db-storage-dot" style={{ background: "#00D4FF" }} />
-                <code>liftup_titles</code>
-                <span>— 1 kayıt · başlık vektörü · benzerlik title skorunda kullanılır</span>
+                <span>Başlık — proje öneri ve benzerlik sonuçlarında gösterilir</span>
               </div>
               <div className="db-storage-explain__item">
                 <span className="db-storage-dot" style={{ background: "#A78BFA" }} />
-                <code>liftup_abstracts</code>
-                <span>— 1 kayıt · özet vektörü · semantik arama için</span>
+                <span>Özet — anlamsal aramada kullanılır</span>
               </div>
               <div className="db-storage-explain__item">
                 <span className="db-storage-dot" style={{ background: "#34D399" }} />
-                <code>liftup_fulltext</code>
-                <span>— {fulltextChunks.length} chunk · 850 kar/chunk · RAG retrieval için</span>
+                <span>Tam metin ({fulltextChunks.length} parça) — PDF sohbette ve detaylı aramada kullanılır</span>
               </div>
             </div>
           </div>
@@ -618,11 +615,11 @@ export default function Database() {
       const status = e?.response?.status;
       const detail = e?.response?.data?.detail;
       if (!e?.response)
-        setStatsErr("Backend'e bağlanılamadı — uvicorn çalışıyor mu? (localhost:8000)");
+        setStatsErr("Sunucuya bağlanılamıyor. Lütfen internet bağlantınızı kontrol edin.");
       else if (status === 503)
-        setStatsErr(detail || "Milvus bağlantısı kurulamadı (localhost:19530)");
+        setStatsErr(detail || "Arama motoruna şu anda bağlanılamıyor. Lütfen daha sonra tekrar deneyin.");
       else
-        setStatsErr(`Hata ${status}: ${detail || e.message}`);
+        setStatsErr(detail || "Bir hata oluştu. Lütfen daha sonra tekrar deneyin.");
     }
   };
 
@@ -727,20 +724,19 @@ export default function Database() {
             <svg viewBox="0 0 10 10" fill="none">
               <path d="M3 2l4 3-4 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
             </svg>
-            <span>Veritabanı</span>
+            <span>Kütüphanem</span>
           </div>
           <h1 className="db-header__title">
-            Milvus <em>Veritabanı</em>
+            Belge <em>Kütüphanem</em>
           </h1>
           <p className="db-header__sub">
-            PDF yükle · BERT embedding ile otomatik indeksle · Benzerlik & Öneri için hazırla
+            PDF yükle, otomatik olarak işlensin — arama ve öneri sistemine hazır hale gelsin
           </p>
           <div className="db-header__pills">
-            <span className="db-pill db-pill--amber">Milvus</span>
-            <span className="db-pill">PostgreSQL</span>
-            <span className="db-pill">sentence-BERT</span>
-            <span className="db-pill">3 Collection</span>
-            <span className="db-pill">850-token chunk</span>
+            <span className="db-pill db-pill--amber">Otomatik İşleme</span>
+            <span className="db-pill">Anlamsal Arama</span>
+            <span className="db-pill">Güvenli Depolama</span>
+            <span className="db-pill">Hızlı İndeksleme</span>
           </div>
         </div>
       </div>
@@ -761,19 +757,19 @@ export default function Database() {
       {/* İstatistik kartları */}
       <div className="db-stats-bar">
         <StatCard
-          label="Toplam PDF" value={totalDocs} color="#F59E0B" sub="unique PDF sayısı"
+          label="Toplam Belge" value={totalDocs} color="#F59E0B" sub="kütüphanenizdeki belge sayısı"
           icon={<svg viewBox="0 0 20 20" fill="none"><path d="M13 2H5a1 1 0 00-1 1v14a1 1 0 001 1h10a1 1 0 001-1V6l-3-4z" stroke="currentColor" strokeWidth="1.5" /><path d="M13 2v4h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>}
         />
         <StatCard
-          label="Başlık Kayıtları" value={titleCount} color="#00D4FF" sub="liftup_titles"
+          label="Başlıklar" value={titleCount} color="#00D4FF" sub="dizinlenmiş başlık"
           icon={<svg viewBox="0 0 20 20" fill="none"><line x1="4" y1="6" x2="16" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><line x1="4" y1="10" x2="12" y2="10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity=".6" /><line x1="4" y1="14" x2="9" y2="14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity=".3" /></svg>}
         />
         <StatCard
-          label="Özet Kayıtları" value={absCount} color="#A78BFA" sub="liftup_abstracts"
+          label="Özetler" value={absCount} color="#A78BFA" sub="dizinlenmiş özet"
           icon={<svg viewBox="0 0 20 20" fill="none"><rect x="3" y="3" width="14" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" /><line x1="6" y1="7" x2="14" y2="7" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /><line x1="6" y1="10" x2="14" y2="10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" opacity=".6" /><line x1="6" y1="13" x2="10" y2="13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" opacity=".3" /></svg>}
         />
         <StatCard
-          label="Fulltext Chunk" value={ftCount} color="#34D399" sub="liftup_fulltext"
+          label="İçerik Parçaları" value={ftCount} color="#34D399" sub="aranabilir metin parçası"
           icon={<svg viewBox="0 0 20 20" fill="none"><ellipse cx="10" cy="6" rx="7" ry="3" stroke="currentColor" strokeWidth="1.5" /><path d="M3 6v4c0 1.657 3.134 3 7 3s7-1.343 7-3V6" stroke="currentColor" strokeWidth="1.5" /><path d="M3 10v4c0 1.657 3.134 3 7 3s7-1.343 7-3v-4" stroke="currentColor" strokeWidth="1.5" /></svg>}
         />
       </div>
@@ -870,7 +866,7 @@ export default function Database() {
                       <path d="M10 3v10M7 6l3-3 3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                       <path d="M3 14v2a1 1 0 001 1h12a1 1 0 001-1v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                     </svg>
-                    <span>Milvus'a Yükle ve İndeksle</span>
+                    <span>Kütüphaneye Ekle</span>
                     {files.length > 0 && (
                       <span className="db-upload-btn__count">{files.length} PDF</span>
                     )}
@@ -891,18 +887,18 @@ export default function Database() {
                 <ul className="db-info-box__list">
                   <li>
                     <span className="db-info-dot" style={{ background: "#00D4FF" }} />
-                    Başlık <span className="db-info-arrow">→</span>{" "}
-                    <code>liftup_titles</code> (1 satır) + PostgreSQL <code>papers.raw_title</code>
+                    Başlığı <span className="db-info-arrow">→</span>{" "}
+                    otomatik olarak tanır ve kaydeder
                   </li>
                   <li>
                     <span className="db-info-dot" style={{ background: "#A78BFA" }} />
-                    Özet <span className="db-info-arrow">→</span>{" "}
-                    <code>liftup_abstracts</code> (1 satır) + PostgreSQL <code>papers.abstract</code>
+                    Özetini <span className="db-info-arrow">→</span>{" "}
+                    çıkarıp arama için hazırlar
                   </li>
                   <li>
                     <span className="db-info-dot" style={{ background: "#34D399" }} />
-                    Tam metin <span className="db-info-arrow">→</span>{" "}
-                    <code>liftup_fulltext</code> (~N chunk, 850 karakter/chunk, overlap 100) + PostgreSQL <code>chunks</code>
+                    Tam metnini <span className="db-info-arrow">→</span>{" "}
+                    anlamsal aramaya ve sohbete hazır hale getirir
                   </li>
                 </ul>
               </div>
