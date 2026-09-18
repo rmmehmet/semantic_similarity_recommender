@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import UserMenu from "../../UserMenu";
+import Journey from "./Journey";
 import "./Home.css";
 
 const NAV_LINKS = [
   { label: "PDF Bölme",  path: "/split",    icon: "⬡" },
   { label: "PDF Sohbet", path: "/chat",     icon: "⬡" },
   { label: "Proje Öneri", path: "/suggest",  icon: "⬡" },
-  { label: "Veritabanı",  path: "/database", icon: "⬡" },
+  { label: "Kütüphanem",  path: "/database", icon: "⬡" },
 ];
 
 const FEATURES = [
@@ -51,8 +52,8 @@ const FEATURES = [
     ),
     tag: "03",
     title: "Proje Öneri",
-    subtitle: "LLM destekli özgünleştirme önerileri",
-    desc: "Yüksek benzerlik (%80+) tespit edildiğinde Llama 3.1 devreye girerek projeyi özgünleştirmenize yardımcı olur.",
+    subtitle: "Yapay zeka destekli özgünleştirme önerileri",
+    desc: "Yüksek benzerlik tespit edildiğinde, projenizi özgünleştirmenize yardımcı olacak alternatif konu önerileri üretir.",
     accent: "#34D399",
   },
   {
@@ -65,9 +66,9 @@ const FEATURES = [
       </svg>
     ),
     tag: "04",
-    title: "Veritabanı",
-    subtitle: "Milvus PDF yönetimi ve indeksleme",
-    desc: "PDF'leri Milvus vektör veritabanına ekle, sil ve yönet. BERT embedding ile otomatik indeksle.",
+    title: "Kütüphanem",
+    subtitle: "Belge kütüphanesi yönetimi",
+    desc: "Yüklediğiniz her PDF otomatik olarak işlenir ve dizinlenir — ekleyin, önizleyin, silin, arayın.",
     accent: "#F59E0B",
   },
 ];
@@ -163,8 +164,8 @@ export default function Home() {
       {/* ── Navbar ── */}
       <nav className={`hm-nav${scrolled ? " hm-nav--scrolled" : ""}`}>
         <button className="hm-nav__logo" onClick={() => navigate("/")} aria-label="Ana sayfaya git">
-          <span className="hm-nav__logo-mark">L</span>
-          <span className="hm-nav__logo-text">LIFT<em>UP</em></span>
+          <span className="hm-nav__logo-mark">A</span>
+          <span className="hm-nav__logo-text">Altay<em>AI</em></span>
         </button>
         <ul className={`hm-nav__links${menuOpen ? " open" : ""}`}>
           {NAV_LINKS.map(l => (
@@ -192,7 +193,7 @@ export default function Home() {
         <div className="hm-hero__content">
           <div className="hm-hero__badge">
             <span className="hm-hero__badge-dot" />
-            LIFT UP Bildiri Analiz Sistemi
+            Akademik Belge Zekası
           </div>
 
           <h1 className="hm-hero__title">
@@ -204,7 +205,7 @@ export default function Home() {
           </h1>
 
           <p className="hm-hero__sub">
-            Geçmiş LIFT UP projelerini tarayın, belgelerinizle sohbet edin
+            Kütüphanenizdeki belgeleri tarayın, onlarla sohbet edin
             <br />ve yapay zeka destekli önerilerle fikrinizi özgünleştirin.
           </p>
 
@@ -229,10 +230,10 @@ export default function Home() {
       <section className="hm-stats">
         <div className="hm-stats__inner">
           {[
-            { n: 5, suffix: "", label: "Benzerlik Algoritması" },
-            { n: 3,  suffix: "",  label: "Vektör Collection" },
-            { n: 70, suffix: "%", label: "Yüksek Benzerlik Eşiği" },
-            { n: 10, suffix: "",  label: "En İyi Eşleşme" },
+            { n: 4, suffix: "", label: "Temel Özellik" },
+            { n: 3,  suffix: "",  label: "Arama Modu" },
+            { n: 80, suffix: "%", label: "Yüksek Benzerlik Eşiği" },
+            { n: 100, suffix: "%", label: "Kaynak Gösterimi" },
           ].map((s, i) => (
             <div className="hm-stat" key={i}>
               <div className="hm-stat__num">
@@ -272,30 +273,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── How It Works ── */}
-      <section className="hm-flow">
-        <div className="hm-flow__header">
-          <span className="hm-section-tag">Nasıl Çalışır?</span>
-          <h2 className="hm-section-title">Dört Adımda Analiz</h2>
-        </div>
-        <div className="hm-flow__steps">
-          {[
-            { n: "01", title: "Yükle", desc: "Başlık ve özet metnini gir ya da PDF yükle" },
-            { n: "02", title: "Gömüle", desc: "paraphrase-multilingual-MiniLM ile vektörleştir" },
-            { n: "03", title: "Karşılaştır", desc: "Milvus vektör DB'deki binlerce projeyle eşleştir" },
-            { n: "04", title: "Öner", desc: "%70+ benzerlikte Llama 3.1 ile özgünleştirme önerileri al" },
-          ].map((s, i) => (
-            <div className="hm-step" key={i}>
-              <div className="hm-step__num">{s.n}</div>
-              {i < 3 && <div className="hm-step__line" />}
-              <div className="hm-step__body">
-                <div className="hm-step__title">{s.title}</div>
-                <div className="hm-step__desc">{s.desc}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+      {/* ── Bir belgenin yolculuğu (scroll ile ilerleyen sinematik anlatım) ── */}
+      <Journey />
 
       {/* ── CTA ── */}
       <section className="hm-cta">
@@ -309,7 +288,7 @@ export default function Home() {
               <svg viewBox="0 0 20 20" fill="none"><path d="M4 10h12M10 4l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </button>
             <button className="hm-btn hm-btn--ghost hm-btn--lg" onClick={() => navigate("/suggest")}>
-              LLM Öneri
+              Proje Öneri
             </button>
           </div>
         </div>
@@ -318,10 +297,10 @@ export default function Home() {
       {/* ── Footer ── */}
       <footer className="hm-footer">
         <div className="hm-footer__logo">
-          <span className="hm-nav__logo-mark">L</span>
-          <span className="hm-nav__logo-text">LIFT<em>UP</em></span>
+          <span className="hm-nav__logo-mark">A</span>
+          <span className="hm-nav__logo-text">Altay<em>AI</em></span>
         </div>
-        <p className="hm-footer__copy">LIFT UP Bildiri Analiz Sistemi · Milvus + Llama 3.1</p>
+        <p className="hm-footer__copy">AltayAI · Akademik Belge Zekası</p>
         <div className="hm-footer__links">
           {NAV_LINKS.map(l => (
             <button key={l.path} className="hm-footer__link" onClick={() => navigate(l.path)}>
