@@ -34,13 +34,21 @@
   font-family: 'Inter', 'JetBrains Mono', system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.5;
+  /* Diğer sayfalarla (Home/Suggest/PdfSplitter) aynı — herhangi bir
+     içerik yatayda taşarsa (uzun dosya adı vb.) sayfa yatay kaymasın,
+     bu da position:fixed navbar'ın görünürdeki konumunu etkilemesin. */
+  overflow-x: hidden;
 }
 
 /* ══════════════════════════════════════════════════════════════════
    NAVBAR
    ══════════════════════════════════════════════════════════════════ */
 .db-nav {
-  position: sticky; top: 0; z-index: 100;
+  /* Diğer tüm sayfalar (Home/Suggest/PdfSplitter/Chat) navbar'ı
+     position:fixed kullanıyor — bu sayfa tek başına sticky kullandığı
+     için sayfa uzayınca (örn. çok sayıda PDF) navbar'ın konumu diğer
+     sayfalarla tutarsız görünüyordu. Aynı davranışa hizalandı. */
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
   display: flex; align-items: center; gap: 12px;
   padding: 0 28px; height: 56px;
   background: rgba(10,10,15,.92);
@@ -95,7 +103,10 @@
    ══════════════════════════════════════════════════════════════════ */
 .db-header {
   position: relative; overflow: hidden;
-  padding: 48px 28px 36px;
+  /* Üst boşluk artık navbar'ın (56px, position:fixed) yüksekliğini de
+     kapsıyor — nav artık akışın dışında olduğu için içerik onun altına
+     kaymasın diye. */
+  padding: 104px 28px 36px;
   border-bottom: 1px solid var(--db-border);
 }
 .db-header__bg-grid {
@@ -426,9 +437,21 @@
 }
 .db-list-empty p { font-size: 15px; margin-bottom: 6px; }
 
+/* Liste sınırsız büyüyüp tüm sayfayı kaydırmaya zorlamasın diye kendi
+   içinde kaydırılabilir bir kutuya alınıyor (bkz. Chat.css'teki aynı
+   desen — .chat-messages / .chat-sidebar__list) — 264 PDF gibi büyük
+   listelerde artık sadece bu kutu kayar, sayfanın tamamı değil. */
+.db-pdf-list {
+  max-height: 65vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
 .db-pdf-list__header {
   display: flex; align-items: center; gap: 10px;
   font-size: 12px; color: var(--db-muted); margin-bottom: 10px;
+  position: sticky; top: 0; z-index: 1;
+  background: var(--db-bg);
+  padding-top: 2px;
 }
 .db-pdf-list__count  { font-weight: 600; color: var(--db-text); }
 .db-pdf-list__filter { color: var(--db-amber); }

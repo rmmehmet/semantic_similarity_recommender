@@ -532,7 +532,13 @@ ul     { list-style: none; }
 .sug-ok-badge svg { width: 11px; height: 11px; }
 
 /* ══ Sonuç Kartları ═══════════════════════════════════════════════ */
-.sug-results { display: flex; flex-direction: column; gap: 8px; }
+/* Sonuç sayısı arttıkça (yüksek top_k) tüm sayfayı kaydırmaya zorlamasın
+   diye kendi içinde kaydırılabilir bir kutuya alınıyor — bkz. Database.css
+   ve Chat.css'teki aynı desen. */
+.sug-results {
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: 65vh; overflow-y: auto; padding-right: 4px;
+}
 .sug-rcard {
   display: grid; grid-template-columns: 46px 1fr;
   background: var(--surface); border: 1px solid var(--border);
