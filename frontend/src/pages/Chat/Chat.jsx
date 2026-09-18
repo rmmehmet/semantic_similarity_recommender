@@ -211,6 +211,29 @@ export default function Chat() {
   const scrollRef = useRef(null);
   const textareaRef = useRef(null);
 
+  // ChatGPT'deki gibi: bu sayfadayken tarayıcı sayfasının (<body>) kendisi
+  // ASLA kaymasın — tüm kaydırma sadece .chat-messages/.chat-sidebar__list
+  // gibi iç panellerin içinde olsun. CSS tarafında (.chat-root, .chat-main,
+  // .chat-sidebar) zincirin her yerinde min-height:0/overflow:hidden zaten
+  // var, ama bazı tarayıcılarda/durumlarda <body> yine de birkaç pikselik
+  // bir taşmayla kayabiliyordu — bu, olası tüm CSS senaryolarına karşı
+  // kesin/garanti bir çözüm: sayfa mount olduğunda body'nin kendi
+  // scroll'unu devre dışı bırakır, sayfadan çıkınca (başka bir route'a
+  // geçince) eski haline geri döndürür.
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    const prevHeight   = document.body.style.height;
+    const prevMargin   = document.body.style.margin;
+    document.body.style.overflow = "hidden";
+    document.body.style.height   = "100vh";
+    document.body.style.margin   = "0";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.height   = prevHeight;
+      document.body.style.margin   = prevMargin;
+    };
+  }, []);
+
   const refreshConversations = useCallback(() => {
     listConversations()
       .then((res) => setConversations(res.conversations || []))
@@ -261,7 +284,15 @@ export default function Chat() {
   }, []);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    const el = scrollRef.current;
+    if (!el) return;
+    // Stream sırasında (sending=true) her delta ayrı bir render/efekt tetikliyor —
+    // "smooth" kaydırma art arda çok hızlı çağrılınca her seferinde bir önceki
+    // animasyonu yarıda kesip yeniden başlatıyor, bu da kullanıcının elle aşağı
+    // itmesi gerekiyormuş gibi bir gecikme/duraksama izlenimi veriyordu. Stream
+    // sırasında anlık (instant) kaydırma kullanılıyor; mesaj tamamlandığında/
+    // yeni bir mesaj eklendiğinde yumuşak kaydırma korunuyor.
+    el.scrollTo({ top: el.scrollHeight, behavior: sending ? "instant" : "smooth" });
   }, [messages, sending]);
 
   const toggleDoc = useCallback((pdfName) => {

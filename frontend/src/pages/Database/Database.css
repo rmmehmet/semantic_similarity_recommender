@@ -247,7 +247,12 @@
 .db-drop__empty-icon svg { width: 100%; color: var(--db-muted); }
 .db-drop__label { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
 .db-drop__sub   { font-size: 12px; color: var(--db-muted); }
-.db-drop__filelist { width: 100%; display: flex; flex-direction: column; gap: 6px; }
+/* Çok sayıda dosya seçilince tüm sayfayı değil, sadece bu liste kaysın
+   (bkz. .db-pdf-list / .sug-results'taki aynı desen). */
+.db-drop__filelist {
+  width: 100%; display: flex; flex-direction: column; gap: 6px;
+  max-height: 50vh; overflow-y: auto; padding-right: 4px;
+}
 .db-drop__file {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 10px; border-radius: 8px;
@@ -367,7 +372,12 @@
 .db-results-summary.has-err { background: #F8717114; border-color: #F8717130; }
 .db-results-summary__ok  { color: var(--db-green); }
 .db-results-summary__err { color: var(--db-red); }
-.db-upload-rows { display: flex; flex-direction: column; gap: 6px; }
+/* Çok sayıda dosya yüklenince (örn. 264 PDF) tüm sayfayı değil, sadece bu
+   liste kaysın. */
+.db-upload-rows {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 50vh; overflow-y: auto; padding-right: 4px;
+}
 
 /* Upload row */
 .db-upload-row {
