@@ -417,3 +417,28 @@ export async function fetchCurrentUser() {
     return null;
   }
 }
+
+export async function updateProfile({ firstName, lastName, email }) {
+  try {
+    const res = await api.patch("/auth/me", {
+      first_name: firstName,
+      last_name: lastName,
+      email,
+    });
+    return res.data.user;
+  } catch (err) {
+    throw new Error(_extractErrorMessage(err, "Profil güncellenemedi."));
+  }
+}
+
+export async function changePassword({ currentPassword, newPassword, newPasswordConfirm }) {
+  try {
+    await api.post("/auth/change-password", {
+      current_password: currentPassword,
+      new_password: newPassword,
+      new_password_confirm: newPasswordConfirm,
+    });
+  } catch (err) {
+    throw new Error(_extractErrorMessage(err, "Şifre değiştirilemedi."));
+  }
+}

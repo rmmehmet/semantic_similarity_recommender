@@ -483,6 +483,30 @@ async def pg_get_user_by_id(user_id: int) -> Optional[dict]:
         return dict(row) if row else None
 
 
+async def pg_update_user_profile(user_id: int, first_name: str, last_name: str, email: str) -> dict:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE users
+            SET first_name = $2, last_name = $3, email = $4, updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, email, phone, first_name, last_name, role, is_active, created_at
+            """,
+            user_id, first_name, last_name, email,
+        )
+        return dict(row)
+
+
+async def pg_update_user_password(user_id: int, password_hash: str) -> None:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1",
+            user_id, password_hash,
+        )
+
+
 # ══════════════════════════════════════════════════════════════════
 # CHAT CONVERSATIONS
 # ══════════════════════════════════════════════════════════════════

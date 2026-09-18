@@ -30,7 +30,10 @@ from services.config import ADMIN_EMAILS, COOKIE_SECURE, JWT_EXPIRE_MINUTES
 from services.database.postgres_service import (
     pg_create_user,
     pg_get_user_by_email,
+    pg_get_user_by_id,
     pg_get_user_by_phone,
+    pg_update_user_password,
+    pg_update_user_profile,
 )
 from services.security import create_access_token, hash_password, verify_password
 
@@ -42,6 +45,21 @@ router = APIRouter(tags=["Auth"])
 # ══════════════════════════════════════════════════════════════════
 # ŞEMALAR
 # ══════════════════════════════════════════════════════════════════
+
+def _validate_password_strength(v: str) -> str:
+    """RegisterRequest ve ChangePasswordRequest'in ikisi de aynı şifre
+    gücü kuralını kullanır — tek yerde tutulur."""
+    if len(v) < 8:
+        raise ValueError("Şifre en az 8 karakter olmalı")
+    # bcrypt 72 byte'tan uzun şifreleri sessizce keser — üst sınır koyuyoruz.
+    if len(v.encode("utf-8")) > 72:
+        raise ValueError("Şifre en fazla 72 karakter olabilir")
+    if not any(c.isdigit() for c in v):
+        raise ValueError("Şifre en az 1 rakam içermeli")
+    if not any(c.isalpha() for c in v):
+        raise ValueError("Şifre en az 1 harf içermeli")
+    return v
+
 
 class RegisterRequest(BaseModel):
     email: EmailStr
@@ -64,16 +82,7 @@ class RegisterRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def _password_strength(cls, v: str) -> str:
-        if len(v) < 8:
-            raise ValueError("Şifre en az 8 karakter olmalı")
-        # bcrypt 72 byte'tan uzun şifreleri sessizce keser — üst sınır koyuyoruz.
-        if len(v.encode("utf-8")) > 72:
-            raise ValueError("Şifre en fazla 72 karakter olabilir")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("Şifre en az 1 rakam içermeli")
-        if not any(c.isalpha() for c in v):
-            raise ValueError("Şifre en az 1 harf içermeli")
-        return v
+        return _validate_password_strength(v)
 
     @field_validator("phone")
     @classmethod
@@ -98,6 +107,39 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class UpdateProfileRequest(BaseModel):
+    first_name: str
+    last_name: str
+    email: EmailStr
+
+    @field_validator("first_name", "last_name")
+    @classmethod
+    def _name_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) < 2:
+            raise ValueError("En az 2 karakter olmalı")
+        if len(v) > 100:
+            raise ValueError("En fazla 100 karakter olabilir")
+        return v
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+    new_password_confirm: str
+
+    @field_validator("new_password")
+    @classmethod
+    def _password_strength(cls, v: str) -> str:
+        return _validate_password_strength(v)
+
+    @model_validator(mode="after")
+    def _passwords_match(self) -> "ChangePasswordRequest":
+        if self.new_password != self.new_password_confirm:
+            raise ValueError("Yeni şifreler eşleşmiyor")
+        return self
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -218,3 +260,54 @@ async def me(current: dict = Depends(get_current_user)):
             "role":       current.get("role"),
         }
     }
+
+
+# ══════════════════════════════════════════════════════════════════
+# PROFİL GÜNCELLE
+# ══════════════════════════════════════════════════════════════════
+
+@router.patch("/me")
+async def update_profile(
+    body: UpdateProfileRequest,
+    response: Response,
+    current: dict = Depends(get_current_user),
+):
+    user_id = int(current["sub"])
+    email = body.email.lower().strip()
+
+    existing = await pg_get_user_by_email(email)
+    if existing and existing["id"] != user_id:
+        raise HTTPException(status_code=409, detail="Bu e-posta adresi zaten kullanılıyor.")
+
+    user = await pg_update_user_profile(user_id, body.first_name, body.last_name, email)
+
+    # JWT'nin içindeki email/ad/soyad claim'leri artık eski — oturum
+    # yeniden giriş yapmadan güncel bilgiyi yansıtsın diye token'ı
+    # yeniden üretip çerezi yeniliyoruz (login/register ile aynı desen).
+    token = create_access_token(user)
+    _set_auth_cookie(response, token)
+    logger.info("[Auth] Profil güncellendi: user_id=%s", user_id)
+
+    return {"user": _public_user(user)}
+
+
+# ══════════════════════════════════════════════════════════════════
+# ŞİFRE DEĞİŞTİR
+# ══════════════════════════════════════════════════════════════════
+
+@router.post("/change-password")
+async def change_password(
+    body: ChangePasswordRequest,
+    current: dict = Depends(get_current_user),
+):
+    user_id = int(current["sub"])
+    user = await pg_get_user_by_id(user_id)
+
+    if not user or not await _verify_password_async(body.current_password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Mevcut şifre hatalı.")
+
+    new_hash = await _hash_password_async(body.new_password)
+    await pg_update_user_password(user_id, new_hash)
+    logger.info("[Auth] Şifre değiştirildi: user_id=%s", user_id)
+
+    return {"status": "ok"}

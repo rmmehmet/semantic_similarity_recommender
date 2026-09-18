@@ -36,12 +36,19 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  // Profil güncellendiğinde (Ayarlar sayfası) context'teki user'ı yeniden
+  // giriş yapmaya gerek kalmadan tazeler — çağıran taraf zaten backend'den
+  // dönen güncel user nesnesini elinde tutuyor, burada sadece paylaşılan
+  // state'e yazıyoruz.
+  const setCurrentUser = useCallback((u) => setUser(u), []);
+
   const value = {
     user,
     loading,
     login,
     register,
     logout,
+    setCurrentUser,
     isAdmin: user?.role === "admin",
   };
 
