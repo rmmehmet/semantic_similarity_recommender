@@ -3,7 +3,7 @@
    Tema: Sinematik koyu · Cyan vurgu (diğer sayfalarla aynı görsel dil)
 ═══════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 .chat-root {
   --bg:        #080C10;
@@ -23,7 +23,7 @@
 
   background: var(--bg);
   color: var(--text);
-  font-family: 'Syne', sans-serif;
+  font-family: 'Manrope', sans-serif;
   /* min-height DEĞİL, sabit height — .chat-layout'un flex:1 ile "kalan
      alanı doldur" hesabı yapabilmesi için üst kapsayıcının BELİRLİ bir
      yüksekliği olmalı. min-height ile parent'ın yüksekliği içeriğe göre

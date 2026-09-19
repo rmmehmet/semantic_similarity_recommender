@@ -3,7 +3,7 @@
    Koyu tema, amber aksanlar, Milvus teknik estetiği
    ══════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 :root {
   --db-bg:        #0a0a0f;
@@ -33,7 +33,7 @@
   min-height: 100vh;
   background: var(--db-bg);
   color: var(--db-text);
-  font-family: 'Syne', sans-serif;
+  font-family: 'Manrope', sans-serif;
   font-size: 14px;
   line-height: 1.5;
   /* Diğer sayfalarla (Home/Suggest/PdfSplitter) aynı — herhangi bir

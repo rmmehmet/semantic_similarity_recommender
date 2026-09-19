@@ -28,7 +28,7 @@ export default function UserMenu() {
   };
 
   return (
-    <div ref={ref} style={{ position: "relative", fontFamily: "'Syne', sans-serif" }}>
+    <div ref={ref} style={{ position: "relative", fontFamily: "'Manrope', sans-serif" }}>
       <button
         onClick={() => setOpen((v) => !v)}
         style={{

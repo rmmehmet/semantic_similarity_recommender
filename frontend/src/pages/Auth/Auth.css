@@ -3,7 +3,7 @@
    Tema: Koyu, sinemaskop — diğer sayfalarla aynı görsel dil
 ═══════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 .auth-root {
   --bg:        #080C10;
@@ -21,7 +21,7 @@
 
   background: radial-gradient(ellipse at top, var(--bg-2), var(--bg));
   color: var(--text);
-  font-family: 'Syne', sans-serif;
+  font-family: 'Manrope', sans-serif;
   min-height: 100vh;
   display: flex;
   align-items: center;

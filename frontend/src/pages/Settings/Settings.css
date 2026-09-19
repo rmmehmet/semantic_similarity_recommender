@@ -3,7 +3,7 @@
    Tema: Sinematik koyu · Violet vurgu (diğer sayfalarla aynı görsel dil)
 ═══════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 .set-root {
   --bg:       #080C10;
@@ -17,7 +17,7 @@
 
   background: var(--bg);
   color: var(--text);
-  font-family: 'Syne', sans-serif;
+  font-family: 'Manrope', sans-serif;
   min-height: 100vh;
   overflow-x: hidden;
 }
