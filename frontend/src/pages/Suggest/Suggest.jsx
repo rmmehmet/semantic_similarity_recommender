@@ -133,47 +133,33 @@ function PdfDrop({ file, onFile, onError }) {
 }
 
 // ── Sonuç Kartı ────────────────────────────────────────────────────
-function ResultCard({ result, rank, animDelay }) {
+function ResultCard({ result, animDelay }) {
   const level = levelFor(result.score);
   const pct   = Math.round(result.score * 100);
-  const LABELS = { high: "Yüksek Benzerlik", mid: "Orta Benzerlik", low: "Düşük Benzerlik" };
+  const LEVEL_LABELS = { high: "Yüksek", mid: "Orta", low: "Düşük" };
   const COLORS = { high: "#EF4444", mid: "#F59E0B", low: "#34D399" };
-  const GRADS  = {
-    high: "linear-gradient(90deg,#EF4444,#F87171)",
-    mid:  "linear-gradient(90deg,#F59E0B,#FCD34D)",
-    low:  "linear-gradient(90deg,#34D399,#6EE7B7)",
-  };
 
   return (
-    <div className={`sug-rcard sug-rcard--${level}`}
-      style={{animationDelay:`${animDelay}ms`}}>
-      <div className="sug-rcard__rank">
-        <span>{String(rank).padStart(2,"0")}</span>
+    <div className={`sug-rrow sug-rrow--${level}`}
+      style={{"--accent":COLORS[level], animationDelay:`${animDelay}ms`}}>
+      <div className="sug-rrow__score">
+        <span className="sug-rrow__pct" style={{color:COLORS[level]}}>%{pct}</span>
+        <span className="sug-rrow__level" style={{color:COLORS[level]}}>{LEVEL_LABELS[level]}</span>
       </div>
-      <div className="sug-rcard__body">
-        <div className="sug-rcard__top">
-          <div className="sug-rcard__title-wrap">
-            <h3 className="sug-rcard__title">{result.raw_title || result.pdf_name}</h3>
-            <div className="sug-rcard__meta">
-              {result.book_name && (
-                <span className="sug-rcard__meta-tag">{result.book_name}</span>
-              )}
-              {result.year > 0 && (
-                <span className="sug-rcard__meta-year">{result.year}</span>
-              )}
-            </div>
+      <div className="sug-rrow__body">
+        <div className="sug-rrow__top">
+          <h3 className="sug-rrow__title">{result.raw_title || result.pdf_name}</h3>
+          <div className="sug-rrow__meta">
+            {result.book_name && (
+              <span className="sug-rrow__meta-tag">{result.book_name}</span>
+            )}
+            {result.year > 0 && (
+              <span className="sug-rrow__meta-year">{result.year}</span>
+            )}
           </div>
-          <span className={`sug-badge sug-badge--${level}`}>{LABELS[level]}</span>
-        </div>
-        <div className="sug-rcard__bar-row">
-          <div className="sug-rcard__bar">
-            <div className="sug-rcard__bar-fill"
-              style={{width:`${pct}%`, background:GRADS[level]}}/>
-          </div>
-          <span className="sug-rcard__pct" style={{color:COLORS[level]}}>%{pct}</span>
         </div>
         {result.matched_text && (
-          <p className="sug-rcard__snippet">"{result.matched_text}"</p>
+          <p className="sug-rrow__snippet">"{result.matched_text}"</p>
         )}
       </div>
     </div>
@@ -195,18 +181,18 @@ function TopicCard({ topic, index, delay }) {
       </div>
       {novelty && (
         <div className="sug-topic-card__novelty">
-          <svg viewBox="0 0 36 36" fill="none" className="sug-topic-card__ring-svg">
-            <circle cx="18" cy="18" r="15" stroke="rgba(52,211,153,0.15)" strokeWidth="3"/>
-            <circle cx="18" cy="18" r="15" stroke="#34D399" strokeWidth="3"
-              strokeLinecap="round"
-              strokeDasharray={`${(novelty/100)*94.2} 94.2`}
-              strokeDashoffset="23.5"
-              transform="rotate(-90 18 18)"/>
-          </svg>
-          <div className="sug-topic-card__novelty-inner">
+          <div className="sug-topic-card__ring">
+            <svg viewBox="0 0 36 36" fill="none" className="sug-topic-card__ring-svg">
+              <circle cx="18" cy="18" r="15" stroke="rgba(52,211,153,0.15)" strokeWidth="3"/>
+              <circle cx="18" cy="18" r="15" stroke="#34D399" strokeWidth="3"
+                strokeLinecap="round"
+                strokeDasharray={`${(novelty/100)*94.2} 94.2`}
+                strokeDashoffset="23.5"
+                transform="rotate(-90 18 18)"/>
+            </svg>
             <span className="sug-topic-card__novelty-val">%{novelty}</span>
-            <span className="sug-topic-card__novelty-lbl">özgünlük</span>
           </div>
+          <span className="sug-topic-card__novelty-lbl">özgünlük</span>
         </div>
       )}
     </div>
@@ -862,7 +848,7 @@ export default function Suggest() {
               {/* Kartlar */}
               <div className="sug-results">
                 {(results.results||[]).map((r,i)=>(
-                  <ResultCard key={r.pdf_name+i} result={r} rank={i+1} animDelay={i*35}/>
+                  <ResultCard key={r.pdf_name+i} result={r} animDelay={i*35}/>
                 ))}
                 {results.total===0 && (
                   <div className="sug-no-results">

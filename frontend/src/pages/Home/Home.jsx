@@ -198,48 +198,54 @@ export default function Home() {
         <HeroCinema />
       </section>
 
-      {/* ── Stats ── */}
+      {/* ── Stats: tek bir cümleye gömülü rakamlar ── */}
       <section className="hm-stats">
-        <div className="hm-stats__inner">
-          {[
-            { n: 4, suffix: "", label: "Temel Özellik" },
-            { n: 3,  suffix: "",  label: "Arama Modu" },
-            { n: 80, suffix: "%", label: "Yüksek Benzerlik Eşiği" },
-            { n: 100, suffix: "%", label: "Kaynak Gösterimi" },
-          ].map((s, i) => (
-            <div className="hm-stat" key={i}>
-              <div className="hm-stat__num">
-                <Counter target={s.n} suffix={s.suffix} />
-              </div>
-              <div className="hm-stat__label">{s.label}</div>
-            </div>
-          ))}
-        </div>
+        <p className="hm-stats__line">
+          Kütüphanenizi <span className="hm-stats__num" style={{ color: "#00D4FF" }}><Counter target={4} /></span> temel
+          özellikle işler, aramayı <span className="hm-stats__num" style={{ color: "#A78BFA" }}><Counter target={3} /></span> farklı
+          modda çalıştırır, <span className="hm-stats__num" style={{ color: "#34D399" }}><Counter target={80} suffix="%" /></span> üzerindeki
+          benzerlikte sizi uyarır ve verdiği her yanıtı kaynağıyla gösterir.
+        </p>
       </section>
 
-      {/* ── Features ── */}
+      {/* ── Modüller: bir belgenin dört yöne dağılışı ── */}
       <section className="hm-features">
         <div className="hm-features__header">
           <span className="hm-section-tag">Modüller</span>
-          <h2 className="hm-section-title">Sistemin Üç Katmanı</h2>
+          <h2 className="hm-section-title">Bir Belge, Dört Yön</h2>
+          <p className="hm-features__lede">Yüklediğiniz her belge, aynı anda dört farklı işleve akar.</p>
         </div>
 
-        <div className="hm-features__grid">
+        <svg className="hm-hub" viewBox="0 0 400 190" aria-hidden="true">
+          <line x1="200" y1="95" x2="66" y2="34" className="hm-hub__spoke" stroke={FEATURES[0].accent} />
+          <line x1="200" y1="95" x2="334" y2="34" className="hm-hub__spoke" stroke={FEATURES[1].accent} />
+          <line x1="200" y1="95" x2="66" y2="156" className="hm-hub__spoke" stroke={FEATURES[2].accent} />
+          <line x1="200" y1="95" x2="334" y2="156" className="hm-hub__spoke" stroke={FEATURES[3].accent} />
+          <circle cx="200" cy="95" r="9" className="hm-hub__core" />
+          <circle cx="66" cy="34" r="4.5" fill={FEATURES[0].accent} />
+          <circle cx="334" cy="34" r="4.5" fill={FEATURES[1].accent} />
+          <circle cx="66" cy="156" r="4.5" fill={FEATURES[2].accent} />
+          <circle cx="334" cy="156" r="4.5" fill={FEATURES[3].accent} />
+        </svg>
+
+        <div className="hm-module-list">
           {FEATURES.map((f) => (
             <button
               key={f.path}
-              className="hm-card"
+              className="hm-module"
               style={{ "--accent": f.accent }}
               onClick={() => navigate(f.path)}
             >
-              <div className="hm-card__tag">{f.tag}</div>
-              <div className="hm-card__icon">{f.icon}</div>
-              <h3 className="hm-card__title">{f.title}</h3>
-              <p className="hm-card__subtitle">{f.subtitle}</p>
-              <p className="hm-card__desc">{f.desc}</p>
-              <div className="hm-card__arrow">
+              <span className="hm-module__index">{f.tag}</span>
+              <span className="hm-module__icon">{f.icon}</span>
+              <span className="hm-module__text">
+                <span className="hm-module__title">{f.title}</span>
+                <span className="hm-module__subtitle">{f.subtitle}</span>
+                <span className="hm-module__desc">{f.desc}</span>
+              </span>
+              <span className="hm-module__arrow">
                 <svg viewBox="0 0 20 20" fill="none"><path d="M4 10h12M10 4l6 6-6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              </div>
+              </span>
             </button>
           ))}
         </div>

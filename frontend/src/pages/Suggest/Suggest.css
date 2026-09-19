@@ -476,19 +476,24 @@ ul     { list-style: none; }
 .sug-topic-card__content  { flex: 1; min-width: 0; }
 .sug-topic-card__title     { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 5px; line-height: 1.4; }
 .sug-topic-card__rationale { font-size: 12px; color: var(--muted); line-height: 1.6; }
-.sug-topic-card__novelty   {
-  position: relative; width: 54px; height: 54px; flex-shrink: 0;
+.sug-topic-card__novelty {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  flex-shrink: 0; width: 62px;
+}
+.sug-topic-card__ring {
+  position: relative; width: 54px; height: 54px;
   display: flex; align-items: center; justify-content: center;
 }
 .sug-topic-card__ring-svg    { position: absolute; inset: 0; width: 100%; height: 100%; }
-.sug-topic-card__novelty-inner { text-align: center; z-index: 1; }
 .sug-topic-card__novelty-val {
-  display: block; font-size: 12px; font-weight: 800;
+  position: relative; z-index: 1;
+  font-size: 12px; font-weight: 800;
   color: var(--green); font-family: 'JetBrains Mono', monospace;
 }
 .sug-topic-card__novelty-lbl {
-  display: block; font-size: 8px; color: var(--muted);
-  font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: .06em;
+  font-size: 9px; color: var(--muted);
+  font-family: 'JetBrains Mono', monospace; letter-spacing: .04em;
+  white-space: nowrap;
 }
 
 /* Önerilen başlık */
@@ -509,7 +514,7 @@ ul     { list-style: none; }
 
 /* ══ Sonuç Başlığı ════════════════════════════════════════════════ */
 .sug-results-hdr {
-  display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;
 }
 .sug-results-hdr__left { display: flex; align-items: center; gap: 10px; }
 .sug-results-title  { font-size: 16px; font-weight: 800; color: var(--text); }
@@ -536,55 +541,59 @@ ul     { list-style: none; }
    diye kendi içinde kaydırılabilir bir kutuya alınıyor — bkz. Database.css
    ve Chat.css'teki aynı desen. */
 .sug-results {
-  display: flex; flex-direction: column; gap: 8px;
+  display: flex; flex-direction: column;
+  border-top: 1px solid var(--border);
   max-height: 65vh; overflow-y: auto; padding-right: 4px;
 }
-.sug-rcard {
-  display: grid; grid-template-columns: 46px 1fr;
-  background: var(--surface); border: 1px solid var(--border);
-  border-left: 3px solid transparent;
-  border-radius: 12px; overflow: hidden;
-  transition: border-color .18s, transform .18s, box-shadow .18s;
-  animation: sug-fadein .3s ease both;
-}
-.sug-rcard:hover  { border-color: rgba(52,211,153,0.2); transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
-.sug-rcard--high  { border-left-color: var(--red); }
-.sug-rcard--mid   { border-left-color: var(--amber); }
-.sug-rcard--low   { border-left-color: var(--green); }
 
-.sug-rcard__rank {
-  display: flex; align-items: center; justify-content: center;
-  font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; color: var(--muted);
-  background: var(--surface2); border-right: 1px solid var(--border);
+/* Numarayı/rozeti öne çıkaran kart yerine, yüzdeyi ana sinyal olarak
+   kullanan hairline'la ayrılmış editoryal liste (ana sayfadaki modül
+   listesiyle aynı görsel dil). */
+.sug-rrow {
+  position: relative;
+  display: grid; grid-template-columns: 68px 1fr;
+  align-items: start; gap: 20px;
+  padding: 18px 10px;
+  border-bottom: 1px solid var(--border);
+  animation: sug-fadein .3s ease both;
+  transition: background .18s;
 }
-.sug-rcard__body  { padding: 14px 16px; min-width: 0; }
-.sug-rcard__top   { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-.sug-rcard__title-wrap { flex: 1; min-width: 0; }
-.sug-rcard__title      { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 5px; line-height: 1.35; }
-.sug-rcard__meta       { display: flex; gap: 6px; flex-wrap: wrap; }
-.sug-rcard__meta-tag   {
+.sug-rrow::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: -1px;
+  width: 2px; background: var(--accent); opacity: 0; transition: opacity .18s;
+}
+.sug-rrow:hover { background: rgba(255,255,255,0.02); }
+.sug-rrow:hover::before { opacity: .7; }
+.sug-rrow--high { background: rgba(239,68,68,0.045); }
+.sug-rrow--high::before { opacity: .65; }
+
+.sug-rrow__score { display: flex; flex-direction: column; gap: 2px; padding-top: 1px; }
+.sug-rrow__pct {
+  font-family: 'JetBrains Mono', monospace; font-size: 25px; font-weight: 800; line-height: 1;
+}
+.sug-rrow__level {
+  font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+}
+
+.sug-rrow__body { min-width: 0; }
+.sug-rrow__top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.sug-rrow__title {
+  font-size: 15px; font-weight: 700; color: var(--text); line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.sug-rrow__meta { display: flex; gap: 6px; flex-wrap: wrap; flex-shrink: 0; margin-top: 2px; }
+.sug-rrow__meta-tag {
   font-size: 10px; font-weight: 600; color: var(--muted);
   background: var(--surface2); border: 1px solid var(--border);
   padding: 2px 8px; border-radius: 4px; font-family: 'JetBrains Mono', monospace;
 }
-.sug-rcard__meta-year  {
+.sug-rrow__meta-year {
   font-size: 10px; font-weight: 700; color: var(--muted);
   font-family: 'JetBrains Mono', monospace;
 }
-
-.sug-badge { font-size: 10px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; font-family: 'JetBrains Mono', monospace; flex-shrink: 0; }
-.sug-badge--high { background: rgba(239,68,68,0.1);  color: var(--red);   border: 1px solid rgba(239,68,68,0.2); }
-.sug-badge--mid  { background: rgba(245,158,11,0.1); color: var(--amber); border: 1px solid rgba(245,158,11,0.2); }
-.sug-badge--low  { background: rgba(52,211,153,0.08); color: var(--green); border: 1px solid rgba(52,211,153,0.18); }
-
-.sug-rcard__bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.sug-rcard__bar { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
-.sug-rcard__bar-fill { height: 100%; border-radius: 2px; transition: width .6s ease; }
-.sug-rcard__pct { font-size: 13px; font-weight: 800; font-family: 'JetBrains Mono', monospace; white-space: nowrap; }
-.sug-rcard__snippet {
-  font-size: 11px; color: var(--muted); line-height: 1.55;
-  padding: 8px 10px; background: var(--surface2); border-radius: 7px;
-  border: 1px solid var(--border); font-style: italic;
+.sug-rrow__snippet {
+  font-size: 12px; color: var(--muted); line-height: 1.6; font-style: italic;
+  margin-top: 6px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 
