@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import UserMenu from "../../UserMenu";
-import Journey from "./Journey";
+import HeroCinema from "./HeroCinema";
 import "./Home.css";
 
 const NAV_LINKS = [
@@ -185,45 +185,17 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* ── Hero ── */}
+      {/* ── Hero: tek, sürekli oynayan sinematik açılış ── */}
       <section className="hm-hero">
         <ParticleField />
         <div className="hm-hero__grid-overlay" />
 
-        <div className="hm-hero__content">
-          <div className="hm-hero__badge">
-            <span className="hm-hero__badge-dot" />
-            Akademik Belge Zekası
-          </div>
-
-          <h1 className="hm-hero__title">
-            <span className="hm-hero__title-line hm-hero__title-line--1">Projeniz</span>
-            <span className="hm-hero__title-line hm-hero__title-line--2">Ne Kadar</span>
-            <span className="hm-hero__title-line hm-hero__title-line--3">
-              Özgün<span className="hm-hero__title-cursor">_</span>
-            </span>
-          </h1>
-
-          <p className="hm-hero__sub">
-            Kütüphanenizdeki belgeleri tarayın, onlarla sohbet edin
-            <br />ve yapay zeka destekli önerilerle fikrinizi özgünleştirin.
-          </p>
-
-          <div className="hm-hero__actions">
-            <button className="hm-btn hm-btn--primary" onClick={() => navigate("/chat")}>
-              <span>Sohbete Başla</span>
-              <svg viewBox="0 0 20 20" fill="none"><path d="M4 10h12M10 4l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            </button>
-            <button className="hm-btn hm-btn--ghost" onClick={() => navigate("/split")}>
-              PDF Yükle
-            </button>
-          </div>
+        <div className="hm-hero__badge">
+          <span className="hm-hero__badge-dot" />
+          Akademik Belge Zekası
         </div>
 
-        <div className="hm-hero__scroll-hint">
-          <span>Aşağı Kaydır</span>
-          <div className="hm-hero__scroll-line" />
-        </div>
+        <HeroCinema />
       </section>
 
       {/* ── Stats ── */}
@@ -272,9 +244,6 @@ export default function Home() {
           ))}
         </div>
       </section>
-
-      {/* ── Bir belgenin yolculuğu (scroll ile ilerleyen sinematik anlatım) ── */}
-      <Journey />
 
       {/* ── CTA ── */}
       <section className="hm-cta">
