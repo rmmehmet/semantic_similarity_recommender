@@ -271,17 +271,26 @@ export default function Home() {
 
       {/* ── Footer ── */}
       <footer className="hm-footer">
-        <div className="hm-footer__logo">
-          <span className="hm-nav__logo-mark">A</span>
-          <span className="hm-nav__logo-text">Altay<em>AI</em></span>
+        <div className="hm-footer__row">
+          <div className="hm-footer__logo">
+            <span className="hm-nav__logo-mark">A</span>
+            <span className="hm-nav__logo-text">Altay<em>AI</em></span>
+          </div>
+          <p className="hm-footer__copy">AltayAI · Akademik Belge Zekası</p>
+          <div className="hm-footer__links">
+            {NAV_LINKS.map(l => (
+              <button key={l.path} className="hm-footer__link" onClick={() => navigate(l.path)}>
+                {l.label}
+              </button>
+            ))}
+          </div>
         </div>
-        <p className="hm-footer__copy">AltayAI · Akademik Belge Zekası</p>
-        <div className="hm-footer__links">
-          {NAV_LINKS.map(l => (
-            <button key={l.path} className="hm-footer__link" onClick={() => navigate(l.path)}>
-              {l.label}
-            </button>
-          ))}
+        <div className="hm-footer__credit">
+          <span>Geliştirici: Mehmet Uzun</span>
+          <span className="hm-footer__credit-sep">·</span>
+          <a href="https://rmmehmet.github.io/" target="_blank" rel="noopener noreferrer">Site</a>
+          <a href="https://github.com/rmmehmet" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://www.linkedin.com/in/ramazan-mehmet-uzun/" target="_blank" rel="noopener noreferrer">LinkedIn</a>
         </div>
       </footer>
     </div>
