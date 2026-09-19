@@ -28,7 +28,7 @@ export default function UserMenu() {
   };
 
   return (
-    <div ref={ref} style={{ position: "relative", fontFamily: "sans-serif" }}>
+    <div ref={ref} style={{ position: "relative", fontFamily: "'Syne', sans-serif" }}>
       <button
         onClick={() => setOpen((v) => !v)}
         style={{
@@ -40,7 +40,7 @@ export default function UserMenu() {
           background: "rgba(255,255,255,0.06)",
           border: "1px solid rgba(255,255,255,0.08)",
           color: "inherit",
-          fontSize: 12,
+          fontSize: 13,
           fontWeight: 600,
           cursor: "pointer",
         }}
@@ -55,7 +55,7 @@ export default function UserMenu() {
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontSize: 11,
+            fontSize: 12,
             fontWeight: 800,
             flexShrink: 0,
           }}
@@ -83,7 +83,7 @@ export default function UserMenu() {
             boxShadow: "0 10px 30px rgba(0,0,0,0.45)",
           }}
         >
-          <div style={{ padding: "6px 10px", fontSize: 11, color: "#6B7E92", wordBreak: "break-all" }}>
+          <div style={{ padding: "6px 10px", fontSize: 12, color: "#6B7E92", wordBreak: "break-all" }}>
             {user.email}
           </div>
 

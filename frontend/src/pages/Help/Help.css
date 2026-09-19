@@ -43,7 +43,7 @@
 .hlp-nav__brand em { color: var(--violet); font-style: normal; }
 .hlp-nav__links { display: flex; gap: 4px; list-style: none; }
 .hlp-nav__link {
-  padding: 7px 14px; font-size: 13px; font-weight: 600;
+  padding: 7px 14px; font-size: 14px; font-weight: 600;
   letter-spacing: .05em; color: var(--muted);
   border-radius: 6px; transition: color .15s, background .15s;
 }
@@ -55,7 +55,7 @@
 .hlp-header { padding: 108px 40px 32px; border-bottom: 1px solid var(--border); }
 .hlp-breadcrumb {
   display: flex; align-items: center; gap: 6px;
-  font-size: 12px; color: var(--muted); margin-bottom: 14px;
+  font-size: 13px; color: var(--muted); margin-bottom: 14px;
 }
 .hlp-breadcrumb svg { width: 9px; opacity: .5; }
 .hlp-breadcrumb span { color: var(--violet); }
@@ -81,7 +81,7 @@
 .hlp-item.open .hlp-item__chevron { transform: rotate(180deg); color: var(--violet); }
 
 .hlp-item__a {
-  padding: 0 18px 16px; font-size: 13px; line-height: 1.65; color: var(--muted);
+  padding: 0 18px 16px; font-size: 14px; line-height: 1.65; color: var(--muted);
 }
 
 @media (max-width: 860px) {
