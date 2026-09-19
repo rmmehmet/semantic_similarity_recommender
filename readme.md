@@ -516,6 +516,25 @@ npm run dev
 # Runs at http://localhost:5173
 ```
 
+### Production
+
+The `--reload` dev command above runs a single worker process — fine for
+development, not for production (one crash takes the whole API down, no
+inbound request concurrency). Run with multiple workers behind a process
+manager and a reverse proxy (nginx/Caddy) terminating TLS instead:
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+Keep it alive across crashes/reboots with a process manager, e.g. systemd
+or supervisor (there's no bundled unit file yet — this project doesn't
+ship a Dockerfile/compose setup for the app itself, only for Milvus, see
+"Milvus Setup" above). Before deploying, also set in `backend/.env`:
+`COOKIE_SECURE=true`, a production `CORS_ORIGINS` (your real frontend
+origin, not `localhost`), and leave `ADMIN_API_KEY`/`ENABLE_DOCS` unset
+unless you specifically need them.
+
 Router registration (already wired in `main.py`, shown here for reference):
 
 ```python

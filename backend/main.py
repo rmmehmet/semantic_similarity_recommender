@@ -32,7 +32,7 @@ from routers.database_router  import router as database_router
 from routers.pdf_router        import router as pdf_router
 from routers.suggest_router    import router as suggest_router
 from services.auth import get_current_user
-from services.config import CORS_ORIGINS, OPENROUTER_API_KEY
+from services.config import CORS_ORIGINS, ENABLE_DOCS, OPENROUTER_API_KEY
 
 # ── Logging ──────────────────────────────────────────────────────
 # Windows konsolları varsayılan olarak UTF-8 olmayan bir codepage (örn.
@@ -66,10 +66,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ── App ──────────────────────────────────────────────────────────
+# /docs, /redoc, /openapi.json ENABLE_DOCS ile kontrol edilir — production'da
+# varsayılan kapalıdır (bkz. services/config.py).
 app = FastAPI(
     title="AltayAI",
     description="RAG Tabanlı Akademik PDF Sohbet ve Proje Öneri Sistemi",
     version="1.0.0",
+    docs_url="/docs" if ENABLE_DOCS else None,
+    redoc_url="/redoc" if ENABLE_DOCS else None,
+    openapi_url="/openapi.json" if ENABLE_DOCS else None,
 )
 
 app.add_middleware(

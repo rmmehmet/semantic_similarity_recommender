@@ -1,8 +1,9 @@
 import logging
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from fastapi.responses import StreamingResponse
 from services.pdf_splitter import split_pdf_by_font_size
+from services.rate_limit import rate_limit
 from services.upload_validation import read_and_validate_pdf
 import fitz
 import io
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-@router.post("/split")
+@router.post("/split", dependencies=[Depends(rate_limit)])
 async def split_pdf(
     file: UploadFile = File(...),
     font_threshold: float = Form(22.0)

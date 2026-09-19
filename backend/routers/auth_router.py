@@ -35,6 +35,7 @@ from services.database.postgres_service import (
     pg_update_user_password,
     pg_update_user_profile,
 )
+from services.rate_limit import auth_rate_limit
 from services.security import create_access_token, hash_password, verify_password
 
 logger = logging.getLogger(__name__)
@@ -185,7 +186,7 @@ def _set_auth_cookie(response: Response, token: str) -> None:
 # REGISTER
 # ══════════════════════════════════════════════════════════════════
 
-@router.post("/register")
+@router.post("/register", dependencies=[Depends(auth_rate_limit)])
 async def register(body: RegisterRequest, response: Response):
     email = body.email.lower().strip()
 
@@ -217,7 +218,7 @@ async def register(body: RegisterRequest, response: Response):
 # LOGIN
 # ══════════════════════════════════════════════════════════════════
 
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(auth_rate_limit)])
 async def login(body: LoginRequest, response: Response):
     email = body.email.lower().strip()
     user = await pg_get_user_by_email(email)
@@ -295,7 +296,7 @@ async def update_profile(
 # ŞİFRE DEĞİŞTİR
 # ══════════════════════════════════════════════════════════════════
 
-@router.post("/change-password")
+@router.post("/change-password", dependencies=[Depends(auth_rate_limit)])
 async def change_password(
     body: ChangePasswordRequest,
     current: dict = Depends(get_current_user),

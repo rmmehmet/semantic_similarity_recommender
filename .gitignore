@@ -49,3 +49,9 @@ storage/
 # LLM Model
 # =========================
 models/
+
+# =========================
+# AI tooling artifacts (not part of the shipped product)
+# =========================
+docs/superpowers/
+.claude/

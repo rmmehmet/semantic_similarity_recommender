@@ -15,6 +15,7 @@ from fastapi.responses import StreamingResponse
 
 from services.auth import get_current_user, require_admin
 from services.config import EMBEDDING_MODEL
+from services.rate_limit import rate_limit
 from services.upload_validation import read_and_validate_pdf
 from services.text_preprocessing import (
     extract_title_from_pdf,
@@ -108,7 +109,7 @@ def _user_storage_dir(user_id: int) -> Path:
 # PDF YÜKLE
 # ══════════════════════════════════════════════════════════════════
 
-@router.post("/add")
+@router.post("/add", dependencies=[Depends(rate_limit)])
 async def add_pdf(
     file: UploadFile   = File(...),
     book_name: str     = Form(""),

@@ -57,8 +57,18 @@ ADMIN_API_KEY: str | None = os.getenv("ADMIN_API_KEY") or None
 MAX_UPLOAD_MB: int = int(os.getenv("MAX_UPLOAD_MB", "30"))
 MAX_UPLOAD_BYTES: int = MAX_UPLOAD_MB * 1024 * 1024
 
+# ── API dokümantasyonu ───────────────────────────────────────────
+# /docs, /redoc ve /openapi.json production'da genelde kapatılır (iç API
+# şeklini herkese açık etmemek için). Portföy amaçlı sergilemek isteniyorsa
+# bilinçli olarak "true" yapılabilir — varsayılan kapalı.
+ENABLE_DOCS: bool = os.getenv("ENABLE_DOCS", "false").lower() == "true"
+
 # ── Rate limiting ────────────────────────────────────────────────
 RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "20"))
+# Auth uçları (login/register/şifre değişimi) için ayrı ve daha sıkı bir
+# limit — brute-force denemelerine karşı genel API limitinden bağımsız
+# kendi sayacını tutar.
+AUTH_RATE_LIMIT_PER_MINUTE: int = int(os.getenv("AUTH_RATE_LIMIT_PER_MINUTE", "10"))
 
 # ── OpenRouter (LLM) ─────────────────────────────────────────────
 # Lokal Ollama yerine OpenRouter üzerinden Llama 3.1 8B Instruct çağrılır.
