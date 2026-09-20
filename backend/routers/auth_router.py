@@ -28,6 +28,7 @@ from pydantic import BaseModel, EmailStr, field_validator, model_validator
 from services.auth import AUTH_COOKIE_NAME, get_current_user
 from services.config import ADMIN_EMAILS, COOKIE_SECURE, JWT_EXPIRE_MINUTES
 from services.database.postgres_service import (
+    pg_bump_token_version,
     pg_create_user,
     pg_get_user_by_email,
     pg_get_user_by_id,
@@ -299,6 +300,7 @@ async def update_profile(
 @router.post("/change-password", dependencies=[Depends(auth_rate_limit)])
 async def change_password(
     body: ChangePasswordRequest,
+    response: Response,
     current: dict = Depends(get_current_user),
 ):
     user_id = int(current["sub"])
@@ -309,6 +311,16 @@ async def change_password(
 
     new_hash = await _hash_password_async(body.new_password)
     await pg_update_user_password(user_id, new_hash)
+
+    # token_version'ı artır — şu ana kadar üretilmiş tüm oturumlar (diğer
+    # cihazlar/çalıntı token dahil) anında geçersiz olur. Mevcut oturumu
+    # tekrar giriş yapmaya zorlamamak için burada hemen taze bir token
+    # üretip çerezi yeniliyoruz.
+    new_version = await pg_bump_token_version(user_id)
+    user["token_version"] = new_version
+    token = create_access_token(user)
+    _set_auth_cookie(response, token)
+
     logger.info("[Auth] Şifre değiştirildi: user_id=%s", user_id)
 
     return {"status": "ok"}

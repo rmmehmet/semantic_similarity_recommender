@@ -26,6 +26,7 @@ import secrets
 from fastapi import Header, HTTPException, Request
 
 from services.config import ADMIN_API_KEY
+from services.database.postgres_service import pg_get_user_token_version
 from services.security import decode_token
 
 logger = logging.getLogger(__name__)
@@ -37,12 +38,24 @@ def _read_token(request: Request) -> str | None:
     return request.cookies.get(AUTH_COOKIE_NAME)
 
 
+async def _decode_and_check_version(token: str) -> dict:
+    """JWT'yi çözer VE token'daki token_version'ı DB'deki güncel değerle
+    karşılaştırır. Şifre değişince DB'deki sayaç artar (bkz.
+    pg_bump_token_version) — o andan önce üretilmiş tüm token'lar (JWT'nin
+    kendi 7 günlük süresi henüz dolmamış olsa bile) burada elenir."""
+    payload = decode_token(token)
+    current_version = await pg_get_user_token_version(int(payload["sub"]))
+    if current_version is None or payload.get("token_version") != current_version:
+        raise HTTPException(status_code=401, detail="Oturum geçersiz, tekrar giriş yapın.")
+    return payload
+
+
 async def get_current_user(request: Request) -> dict:
     """Oturum ZORUNLU — token yoksa/geçersizse 401 döner."""
     token = _read_token(request)
     if not token:
         raise HTTPException(status_code=401, detail="Oturum açmanız gerekiyor.")
-    return decode_token(token)
+    return await _decode_and_check_version(token)
 
 
 async def get_current_user_optional(request: Request) -> dict | None:
@@ -51,7 +64,7 @@ async def get_current_user_optional(request: Request) -> dict | None:
     if not token:
         return None
     try:
-        return decode_token(token)
+        return await _decode_and_check_version(token)
     except HTTPException:
         return None
 

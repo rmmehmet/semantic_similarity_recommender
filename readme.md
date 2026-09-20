@@ -535,6 +535,15 @@ ship a Dockerfile/compose setup for the app itself, only for Milvus, see
 origin, not `localhost`), and leave `ADMIN_API_KEY`/`ENABLE_DOCS` unset
 unless you specifically need them.
 
+Changing a password bumps the user's `token_version` in the DB and
+reissues the current session's cookie — every other JWT issued before
+that point (other devices, a stolen cookie) is rejected on its next
+request even though it hasn't expired yet (`services/auth.py`).
+LLM-backed endpoints (PDF Chat, Proje Öneri) are capped at
+`LLM_DAILY_LIMIT_PER_USER` (default 5) calls per user per rolling 24h,
+separate from the general per-minute rate limit, since OpenRouter calls
+are billed.
+
 Router registration (already wired in `main.py`, shown here for reference):
 
 ```python

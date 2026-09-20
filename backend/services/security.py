@@ -47,16 +47,17 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def create_access_token(user: dict[str, Any]) -> str:
-    """user: en az id, email, role, first_name, last_name alanlarını içermeli."""
+    """user: en az id, email, role, first_name, last_name, token_version alanlarını içermeli."""
     now = dt.datetime.now(dt.timezone.utc)
     payload = {
-        "sub":        str(user["id"]),
-        "email":      user["email"],
-        "role":       user["role"],
-        "first_name": user["first_name"],
-        "last_name":  user["last_name"],
-        "iat":        now,
-        "exp":        now + dt.timedelta(minutes=JWT_EXPIRE_MINUTES),
+        "sub":            str(user["id"]),
+        "email":          user["email"],
+        "role":           user["role"],
+        "first_name":     user["first_name"],
+        "last_name":      user["last_name"],
+        "token_version":  user["token_version"],
+        "iat":            now,
+        "exp":            now + dt.timedelta(minutes=JWT_EXPIRE_MINUTES),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=_ALGORITHM)
 

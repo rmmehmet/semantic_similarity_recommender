@@ -70,6 +70,11 @@ RATE_LIMIT_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_PER_MINUTE", "20"))
 # kendi sayacını tutar.
 AUTH_RATE_LIMIT_PER_MINUTE: int = int(os.getenv("AUTH_RATE_LIMIT_PER_MINUTE", "10"))
 
+# OpenRouter çağrıları ücretli olduğundan, her kullanıcının LLM kullanan
+# uçlara (PDF Chat, Proje Öneri) günde kaç kez istek atabileceği ayrı ve
+# daha sıkı bir limitle sınırlanır — dakikalık genel limitten bağımsız.
+LLM_DAILY_LIMIT_PER_USER: int = int(os.getenv("LLM_DAILY_LIMIT_PER_USER", "5"))
+
 # ── OpenRouter (LLM) ─────────────────────────────────────────────
 # Lokal Ollama yerine OpenRouter üzerinden Llama 3.1 8B Instruct çağrılır.
 # OPENROUTER_API_KEY ZORUNLUDUR — ayarlanmazsa LLM özellikleri devre dışı

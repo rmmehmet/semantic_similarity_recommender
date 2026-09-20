@@ -46,7 +46,7 @@ from services.database.postgres_service import (
     pg_list_conversations,
     pg_touch_conversation,
 )
-from services.rate_limit import rate_limit
+from services.rate_limit import llm_daily_limit, rate_limit
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,7 @@ class ChatRequest(BaseModel):
     conversation_id: int | None = None
 
 
-@router.post("/message", dependencies=[Depends(rate_limit)])
+@router.post("/message", dependencies=[Depends(rate_limit), Depends(llm_daily_limit)])
 async def chat_message(body: ChatRequest, current_user: dict = Depends(get_current_user)):
     user_id   = int(current_user["sub"])
     pdf_names = [n.strip() for n in body.pdf_names if n.strip()]
@@ -129,7 +129,7 @@ async def chat_message(body: ChatRequest, current_user: dict = Depends(get_curre
     return result
 
 
-@router.post("/message/stream", dependencies=[Depends(rate_limit)])
+@router.post("/message/stream", dependencies=[Depends(rate_limit), Depends(llm_daily_limit)])
 async def chat_message_stream(body: ChatRequest, current_user: dict = Depends(get_current_user)):
     user_id   = int(current_user["sub"])
     pdf_names = [n.strip() for n in body.pdf_names if n.strip()]

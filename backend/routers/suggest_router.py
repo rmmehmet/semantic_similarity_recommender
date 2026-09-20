@@ -35,7 +35,7 @@ from sentence_transformers import SentenceTransformer
 from services.auth import get_current_user
 from services.text_preprocessing import extract_full_text_from_pdf
 from services.upload_validation import validate_pdf_bytes
-from services.rate_limit import rate_limit
+from services.rate_limit import llm_daily_limit, rate_limit
 from services.config import EMBEDDING_MODEL, OPENROUTER_API_KEY
 
 # ── Öneri servisi ─────────────────────────────────────────────────
@@ -78,7 +78,7 @@ async def _embed_async(text: str) -> list[float]:
 # POST /suggest/search
 # ══════════════════════════════════════════════════════════════════
 
-@router.post("/search", dependencies=[Depends(rate_limit)])
+@router.post("/search", dependencies=[Depends(rate_limit), Depends(llm_daily_limit)])
 async def suggest_search(
     search_type: str                    = Form(...),   # "title" | "abstract" | "fulltext"
     query_text:  str                    = Form(""),

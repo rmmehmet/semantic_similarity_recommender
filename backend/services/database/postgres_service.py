@@ -455,7 +455,7 @@ async def pg_create_user(
             """
             INSERT INTO users (email, phone, first_name, last_name, password_hash, role)
             VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, email, phone, first_name, last_name, role, is_active, created_at
+            RETURNING id, email, phone, first_name, last_name, role, is_active, created_at, token_version
             """,
             email, phone, first_name, last_name, password_hash, role,
         )
@@ -491,7 +491,7 @@ async def pg_update_user_profile(user_id: int, first_name: str, last_name: str, 
             UPDATE users
             SET first_name = $2, last_name = $3, email = $4, updated_at = NOW()
             WHERE id = $1
-            RETURNING id, email, phone, first_name, last_name, role, is_active, created_at
+            RETURNING id, email, phone, first_name, last_name, role, is_active, created_at, token_version
             """,
             user_id, first_name, last_name, email,
         )
@@ -505,6 +505,27 @@ async def pg_update_user_password(user_id: int, password_hash: str) -> None:
             "UPDATE users SET password_hash = $2, updated_at = NOW() WHERE id = $1",
             user_id, password_hash,
         )
+
+
+async def pg_bump_token_version(user_id: int) -> int:
+    """Şifre değişince çağrılır — sayaç artınca o ana kadar üretilmiş tüm
+    JWT'ler (diğer cihazlar/çalıntı token dahil) anında geçersiz olur,
+    çünkü get_current_user her istekte bu değeri DB'den kontrol eder."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "UPDATE users SET token_version = token_version + 1, updated_at = NOW() WHERE id = $1 "
+            "RETURNING token_version",
+            user_id,
+        )
+        return row["token_version"]
+
+
+async def pg_get_user_token_version(user_id: int) -> Optional[int]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT token_version FROM users WHERE id = $1", user_id)
+        return row["token_version"] if row else None
 
 
 # ══════════════════════════════════════════════════════════════════
