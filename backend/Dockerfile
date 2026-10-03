@@ -28,4 +28,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Behind nginx, request.client.host would be nginx's container IP for every
+# request, so services/rate_limit.py's per-IP limits would be shared by all
+# users. Trust X-Forwarded-For from nginx (which overwrites it with
+# $remote_addr); port 8000 is not published, so only nginx can reach this.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
