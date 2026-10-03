@@ -9,6 +9,7 @@ from pymilvus import (
     DataType,
     FieldSchema,
     connections,
+    db,
     utility,
 )
 
@@ -28,8 +29,22 @@ HNSW_INDEX = {
 }
 
 
+def _ensure_database() -> None:
+    """A fresh Milvus only has the 'default' database; connecting with a
+    db_name that doesn't exist fails, so create MILVUS_DB first. Uses its own
+    alias so the 'default' alias can still be opened with db_name below."""
+    connections.connect("bootstrap", host=MILVUS_HOST, port=MILVUS_PORT)
+    try:
+        if MILVUS_DB not in db.list_database(using="bootstrap"):
+            db.create_database(MILVUS_DB, using="bootstrap")
+            logger.info("Milvus veritabanı oluşturuldu: %s", MILVUS_DB)
+    finally:
+        connections.disconnect("bootstrap")
+
+
 def create_all_collections() -> None:
     """Create Milvus collections if they don't exist, otherwise just load them."""
+    _ensure_database()
     connections.connect(
         "default",
         host=MILVUS_HOST,
