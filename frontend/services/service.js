@@ -108,7 +108,17 @@ export const streamChatMessage = async (message, pdfNames = [], conversationId =
   });
 
   if (!res.ok || !res.body) {
-    throw new Error(`Sunucuya bağlanılamadı (HTTP ${res.status})`);
+    // Show the backend's own message (e.g. the 429 daily LLM quota text)
+    // instead of a generic connection error.
+    let detail = "";
+    try {
+      detail = (await res.json())?.detail || "";
+    } catch {
+      // body wasn't JSON
+    }
+    throw new Error(
+      typeof detail === "string" && detail ? detail : `Sunucuya bağlanılamadı (HTTP ${res.status})`,
+    );
   }
 
   const reader = res.body.getReader();
