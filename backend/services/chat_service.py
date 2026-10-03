@@ -154,6 +154,12 @@ async def _prepare_messages(
                 output_fields=["pdf_name", "chunk_idx", "text", "section", "subsection", "page_start", "page_end"],
                 expr=expr,
             )
+            # Kullanıcı belge(ler)i açıkça seçtiyse eşik uygulanmaz: arama zaten
+            # o belgelerle sınırlı ve diller farklıyken (örn. İngilizce CV,
+            # Türkçe soru) gerçekten alakalı chunk'lar bile ~0.25-0.30 skor
+            # alıp eleniyordu. Eşik yalnızca tüm kütüphanede aramada korunur.
+            if pdf_names:
+                return hits
             return [h for h in hits if h.get("score", 0) >= MIN_VECTOR_SCORE]
         except Exception as exc:
             logger.error("[Chat] Milvus arama hatası (user=%s): %s", user_id, exc)
