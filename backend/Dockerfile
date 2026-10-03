@@ -13,6 +13,12 @@ COPY requirements.txt .
 # drags in several GB of CUDA libraries.
 RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
+# services/config.py forces HF_HUB_OFFLINE=1 at runtime, so the embedding
+# model has to be in the image's HF cache already. Keep in sync with
+# EMBEDDING_MODEL in deploy/docker-compose.yml.
+ARG EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-mpnet-base-v2
+RUN HF_HUB_OFFLINE=0 python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('${EMBEDDING_MODEL}')"
+
 COPY . .
 
 RUN mkdir -p storage/pdfs
