@@ -1,0 +1,204 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 900" width="1120" height="900" role="img" aria-labelledby="title desc">
+  <title id="title">AltayAI system architecture</title>
+  <desc id="desc">Browser traffic reaches an nginx reverse proxy on a Google Cloud Compute Engine VM running Docker Compose. nginx serves the React frontend and proxies /api to a FastAPI backend, which uses PostgreSQL, Milvus, a PDF storage volume, an in-process sentence-transformers embedding model and the OpenRouter LLM API.</desc>
+  <style>
+    svg {
+      --bg: #ffffff; --panel: #f6f8fa; --box: #ffffff; --border: #d0d7de;
+      --text: #1f2328; --muted: #59636e; --arrow: #6e7781;
+      --app: #0969da; --data: #1a7f37; --ext: #8250df; --edge: #bc4c00;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      svg {
+        --bg: #0d1117; --panel: #151b23; --box: #0d1117; --border: #3d444d;
+        --text: #e6edf3; --muted: #9198a1; --arrow: #8b949e;
+        --app: #4493f8; --data: #3fb950; --ext: #ab7df8; --edge: #f0883e;
+      }
+    }
+    .bg { fill: var(--bg); }
+    .zone { fill: var(--panel); stroke: var(--border); stroke-width: 1.5; stroke-dasharray: 6 5; }
+    .container { fill: var(--panel); stroke: var(--border); stroke-width: 1.5; }
+    .box { fill: var(--box); stroke: var(--border); stroke-width: 1.5; }
+    .app { stroke: var(--app); }
+    .data { stroke: var(--data); }
+    .ext { stroke: var(--ext); }
+    .edge { stroke: var(--edge); }
+    .pill { fill: var(--box); stroke: var(--app); stroke-width: 1.2; }
+    .h1 { fill: var(--text); font-size: 22px; font-weight: 600; }
+    .h2 { fill: var(--muted); font-size: 14px; }
+    .zl { fill: var(--muted); font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+    .t { fill: var(--text); font-size: 15px; font-weight: 600; }
+    .s { fill: var(--muted); font-size: 13px; }
+    .m { fill: var(--text); font-size: 13px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .lbl { fill: var(--muted); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .ln { stroke: var(--arrow); stroke-width: 1.6; fill: none; }
+    .dash { stroke-dasharray: 5 4; }
+    .head { fill: var(--arrow); }
+    .divider { stroke: var(--border); stroke-width: 1; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1120" height="900"/>
+
+  <text class="h1" x="20" y="38">AltayAI — System Architecture</text>
+  <text class="h2" x="20" y="60">Single-VM deployment, all services orchestrated with Docker Compose</text>
+
+  <!-- Client -->
+  <rect class="box edge" x="310" y="76" width="300" height="56" rx="8"/>
+  <text class="t" x="460" y="100" text-anchor="middle">User · Web Browser</text>
+  <text class="s" x="460" y="120" text-anchor="middle">https://altayai.duckdns.org</text>
+
+  <!-- VM zone -->
+  <rect class="zone" x="20" y="160" width="880" height="680" rx="12"/>
+  <text class="zl" x="40" y="186">Google Cloud Compute Engine VM · Docker Compose</text>
+
+  <!-- nginx -->
+  <rect class="box edge" x="260" y="200" width="400" height="58" rx="8"/>
+  <text class="t" x="460" y="224" text-anchor="middle">nginx 1.27 · Reverse Proxy</text>
+  <text class="s" x="460" y="244" text-anchor="middle">TLS termination · HTTP → HTTPS redirect</text>
+
+  <!-- Frontend container -->
+  <rect class="container" x="40" y="300" width="240" height="372" rx="10"/>
+  <text class="t" x="56" y="326">Frontend container</text>
+  <text class="s" x="56" y="348">React 19 · React Router 7</text>
+  <text class="s" x="56" y="367">Vite build served by nginx</text>
+  <line class="divider" x1="56" y1="384" x2="264" y2="384"/>
+  <text class="zl" x="56" y="406">Pages</text>
+  <text class="s" x="56" y="430">Login · Register</text>
+  <text class="s" x="56" y="452">PDF Splitter</text>
+  <text class="s" x="56" y="474">Project Suggestion</text>
+  <text class="s" x="56" y="496">PDF Chat (SSE streaming)</text>
+  <text class="s" x="56" y="518">Library (Database)</text>
+  <text class="s" x="56" y="540">Settings · Help</text>
+  <line class="divider" x1="56" y1="560" x2="264" y2="560"/>
+  <text class="s" x="56" y="584">axios + fetch with</text>
+  <text class="s" x="56" y="603">credentials: "include"</text>
+  <text class="s" x="56" y="626">API base path: /api</text>
+
+  <!-- Backend container -->
+  <rect class="container" x="310" y="300" width="570" height="372" rx="10"/>
+  <text class="t" x="326" y="326">Backend container · FastAPI + Uvicorn</text>
+
+  <rect class="pill" x="326" y="340" width="98" height="30" rx="15"/>
+  <text class="m" x="375" y="360" text-anchor="middle">/auth</text>
+  <rect class="pill" x="436" y="340" width="98" height="30" rx="15"/>
+  <text class="m" x="485" y="360" text-anchor="middle">/db</text>
+  <rect class="pill" x="546" y="340" width="98" height="30" rx="15"/>
+  <text class="m" x="595" y="360" text-anchor="middle">/chat</text>
+  <rect class="pill" x="656" y="340" width="98" height="30" rx="15"/>
+  <text class="m" x="705" y="360" text-anchor="middle">/suggest</text>
+  <rect class="pill" x="766" y="340" width="98" height="30" rx="15"/>
+  <text class="m" x="815" y="360" text-anchor="middle">/pdf</text>
+
+  <!-- Row 1 -->
+  <rect class="box app" x="326" y="386" width="263" height="84" rx="8"/>
+  <text class="t" x="340" y="408">Auth &amp; Security</text>
+  <text class="s" x="340" y="428">JWT (HS256) in httpOnly cookie</text>
+  <text class="s" x="340" y="446">bcrypt · token_version revocation</text>
+  <text class="s" x="340" y="464">Per-IP and per-user LLM limits</text>
+
+  <rect class="box app" x="601" y="386" width="263" height="84" rx="8"/>
+  <text class="t" x="615" y="408">Embedding Model</text>
+  <text class="s" x="615" y="428">sentence-transformers (in-process)</text>
+  <text class="s" x="615" y="446">paraphrase-multilingual-mpnet</text>
+  <text class="s" x="615" y="464">768-d · CPU · normalized</text>
+
+  <!-- Row 2 -->
+  <rect class="box app" x="326" y="480" width="263" height="84" rx="8"/>
+  <text class="t" x="340" y="502">Document Processing</text>
+  <text class="s" x="340" y="522">PyMuPDF text and font extraction</text>
+  <text class="s" x="340" y="540">Heading, section and page markers</text>
+  <text class="s" x="340" y="558">Sentence-aware chunking</text>
+
+  <rect class="box app" x="601" y="480" width="263" height="84" rx="8"/>
+  <text class="t" x="615" y="502">OpenRouter Client</text>
+  <text class="s" x="615" y="522">Chat Completions over HTTPS</text>
+  <text class="s" x="615" y="540">Retry with backoff (429, 5xx)</text>
+  <text class="s" x="615" y="558">Token streaming (SSE)</text>
+
+  <!-- Row 3 -->
+  <rect class="box app" x="326" y="574" width="263" height="84" rx="8"/>
+  <text class="t" x="340" y="596">Hybrid Retrieval</text>
+  <text class="s" x="340" y="616">Milvus vector + Postgres FTS</text>
+  <text class="s" x="340" y="634">Reciprocal Rank Fusion (k = 60)</text>
+  <text class="s" x="340" y="652">LLM-based reranking</text>
+
+  <rect class="box app" x="601" y="574" width="263" height="84" rx="8"/>
+  <text class="t" x="615" y="596">RAG Services</text>
+  <text class="s" x="615" y="616">PDF Chat orchestration</text>
+  <text class="s" x="615" y="634">Project Suggestion analysis</text>
+  <text class="s" x="615" y="652">Grounded prompt construction</text>
+
+  <!-- Data row -->
+  <rect class="box data" x="40" y="712" width="185" height="104" rx="8"/>
+  <text class="t" x="54" y="736">PDF Volume</text>
+  <text class="s" x="54" y="758">pdf_storage</text>
+  <text class="s" x="54" y="777">Original uploads,</text>
+  <text class="s" x="54" y="796">one folder per user</text>
+
+  <rect class="box data" x="245" y="712" width="200" height="104" rx="8"/>
+  <text class="t" x="259" y="736">PostgreSQL 16</text>
+  <text class="s" x="259" y="758">users · papers · chunks</text>
+  <text class="s" x="259" y="777">chat conversations</text>
+  <text class="s" x="259" y="796">GIN full-text indexes</text>
+
+  <rect class="box data" x="465" y="712" width="200" height="104" rx="8"/>
+  <text class="t" x="479" y="736">Milvus 2.4</text>
+  <text class="s" x="479" y="758">3 vector collections</text>
+  <text class="s" x="479" y="777">HNSW · COSINE · 768-d</text>
+  <text class="s" x="479" y="796">Filtered by user_id</text>
+
+  <rect class="box data" x="705" y="712" width="175" height="104" rx="8"/>
+  <text class="t" x="719" y="736">etcd + MinIO</text>
+  <text class="s" x="719" y="758">Milvus metadata</text>
+  <text class="s" x="719" y="777">and segment storage</text>
+
+  <!-- External services -->
+  <text class="zl" x="930" y="186">External</text>
+
+  <rect class="box ext" x="930" y="200" width="170" height="58" rx="8"/>
+  <text class="t" x="944" y="224">Let's Encrypt</text>
+  <text class="s" x="944" y="244">TLS certificates</text>
+
+  <rect class="box ext" x="930" y="394" width="170" height="76" rx="8"/>
+  <text class="t" x="944" y="418">Hugging Face Hub</text>
+  <text class="s" x="944" y="438">Model weights,</text>
+  <text class="s" x="944" y="456">image build only</text>
+
+  <rect class="box ext" x="930" y="484" width="170" height="76" rx="8"/>
+  <text class="t" x="944" y="508">OpenRouter API</text>
+  <text class="s" x="944" y="528">llama-3.1-8b-instruct</text>
+  <text class="s" x="944" y="546">(configurable)</text>
+
+  <!-- Arrows -->
+  <path class="ln" d="M460,132 L460,198" marker-end="url(#a)"/>
+  <text class="lbl" x="470" y="172">HTTPS</text>
+
+  <path class="ln" d="M330,258 L190,298" marker-end="url(#a)"/>
+  <text class="lbl" x="196" y="276">/</text>
+
+  <path class="ln" d="M595,258 L595,298" marker-end="url(#a)"/>
+  <text class="lbl" x="605" y="284">/api/* → :8000</text>
+
+  <path class="ln dash" d="M930,229 L662,229" marker-end="url(#a)"/>
+  <text class="lbl" x="700" y="221">certbot webroot</text>
+
+  <path class="ln dash" d="M930,432 L866,432" marker-end="url(#a)"/>
+
+  <path class="ln" d="M866,522 L928,522" marker-end="url(#a)"/>
+
+  <path class="ln" d="M330,672 L190,710" marker-end="url(#a)"/>
+  <path class="ln" d="M380,672 L380,710" marker-end="url(#a)"/>
+  <path class="ln" d="M560,672 L560,710" marker-end="url(#a)"/>
+  <path class="ln" d="M665,764 L703,764" marker-end="url(#a)"/>
+
+  <!-- Legend -->
+  <path class="ln" d="M24,872 L64,872" marker-end="url(#a)"/>
+  <text class="s" x="74" y="876">request / data flow</text>
+  <path class="ln dash" d="M224,872 L264,872" marker-end="url(#a)"/>
+  <text class="s" x="274" y="876">build-time or certificate provisioning</text>
+</svg>

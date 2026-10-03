@@ -1,0 +1,195 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 860" width="1120" height="860" role="img" aria-labelledby="title desc">
+  <title id="title">AltayAI document ingestion and RAG pipeline</title>
+  <desc id="desc">Ingestion: PDF upload, validation and de-duplication, PyMuPDF extraction, sentence-aware chunking, embedding and a dual write to PostgreSQL and Milvus. Query: the question is contextualized and embedded, searched in parallel in Milvus and PostgreSQL full-text search, fused with reciprocal rank fusion, reranked by an LLM, assembled into a grounded prompt, answered by the OpenRouter LLM as a token stream and persisted with its sources.</desc>
+  <style>
+    svg {
+      --bg: #ffffff; --panel: #f6f8fa; --box: #ffffff; --border: #d0d7de;
+      --text: #1f2328; --muted: #59636e; --arrow: #6e7781;
+      --app: #0969da; --data: #1a7f37; --ext: #8250df;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+    @media (prefers-color-scheme: dark) {
+      svg {
+        --bg: #0d1117; --panel: #151b23; --box: #0d1117; --border: #3d444d;
+        --text: #e6edf3; --muted: #9198a1; --arrow: #8b949e;
+        --app: #4493f8; --data: #3fb950; --ext: #ab7df8;
+      }
+    }
+    .bg { fill: var(--bg); }
+    .lane { fill: var(--panel); stroke: var(--border); stroke-width: 1.5; }
+    .box { fill: var(--box); stroke: var(--app); stroke-width: 1.5; }
+    .data { stroke: var(--data); }
+    .ext { stroke: var(--ext); }
+    .h1 { fill: var(--text); font-size: 22px; font-weight: 600; }
+    .h2 { fill: var(--muted); font-size: 14px; }
+    .lt { fill: var(--text); font-size: 15px; font-weight: 600; }
+    .lm { fill: var(--muted); font-size: 13px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .n { fill: var(--app); font-size: 12px; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .t { fill: var(--text); font-size: 15px; font-weight: 600; }
+    .s { fill: var(--muted); font-size: 13px; }
+    .lbl { fill: var(--muted); font-size: 12px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+    .ln { stroke: var(--arrow); stroke-width: 1.6; fill: none; }
+    .head { fill: var(--arrow); }
+    .note { fill: var(--muted); font-size: 13px; }
+    .noteb { fill: var(--text); font-size: 13px; font-weight: 600; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1120" height="860"/>
+
+  <text class="h1" x="20" y="38">AltayAI — Document &amp; RAG Pipeline</text>
+  <text class="h2" x="20" y="60">Ingestion runs once per uploaded PDF; retrieval and generation run on every chat message</text>
+
+  <!-- ═══════════ Lane 1: Ingestion ═══════════ -->
+  <rect class="lane" x="20" y="80" width="1080" height="220" rx="12"/>
+  <text class="lt" x="40" y="108">Ingestion</text>
+  <text class="lm" x="125" y="108">POST /db/add</text>
+
+  <rect class="box" x="40" y="126" width="180" height="156" rx="8"/>
+  <text class="n" x="54" y="148">01</text>
+  <text class="t" x="54" y="168">Upload</text>
+  <text class="s" x="54" y="190">%PDF- magic bytes</text>
+  <text class="s" x="54" y="209">Size limit (30 MB)</text>
+  <text class="s" x="54" y="228">SHA-256 content hash</text>
+  <text class="s" x="54" y="247">Per-user de-duplication</text>
+
+  <rect class="box" x="255" y="126" width="180" height="156" rx="8"/>
+  <text class="n" x="269" y="148">02</text>
+  <text class="t" x="269" y="168">Extraction</text>
+  <text class="s" x="269" y="190">PyMuPDF (fitz)</text>
+  <text class="s" x="269" y="209">Title: metadata / font</text>
+  <text class="s" x="269" y="228">Abstract: section match</text>
+  <text class="s" x="269" y="247">Section + page markers</text>
+
+  <rect class="box" x="470" y="126" width="180" height="156" rx="8"/>
+  <text class="n" x="484" y="148">03</text>
+  <text class="t" x="484" y="168">Chunking</text>
+  <text class="s" x="484" y="190">Sentence-aware (TR)</text>
+  <text class="s" x="484" y="209">≤ 850 chars per chunk</text>
+  <text class="s" x="484" y="228">1-sentence overlap</text>
+  <text class="s" x="484" y="247">Section-bounded</text>
+  <text class="s" x="484" y="266">References excluded</text>
+
+  <rect class="box" x="685" y="126" width="180" height="156" rx="8"/>
+  <text class="n" x="699" y="148">04</text>
+  <text class="t" x="699" y="168">Embedding</text>
+  <text class="s" x="699" y="190">multilingual-mpnet</text>
+  <text class="s" x="699" y="209">768-d, L2-normalized</text>
+  <text class="s" x="699" y="228">Title, abstract and</text>
+  <text class="s" x="699" y="247">every full-text chunk</text>
+
+  <rect class="box data" x="900" y="126" width="180" height="72" rx="8"/>
+  <text class="t" x="914" y="150">PostgreSQL</text>
+  <text class="s" x="914" y="170">papers, chunks,</text>
+  <text class="s" x="914" y="188">tsvector columns</text>
+
+  <rect class="box data" x="900" y="210" width="180" height="72" rx="8"/>
+  <text class="t" x="914" y="234">Milvus</text>
+  <text class="s" x="914" y="254">titles · abstracts ·</text>
+  <text class="s" x="914" y="272">fulltext collections</text>
+
+  <path class="ln" d="M220,204 L253,204" marker-end="url(#a)"/>
+  <path class="ln" d="M435,204 L468,204" marker-end="url(#a)"/>
+  <path class="ln" d="M650,204 L683,204" marker-end="url(#a)"/>
+  <path class="ln" d="M865,190 L898,166" marker-end="url(#a)"/>
+  <path class="ln" d="M865,218 L898,242" marker-end="url(#a)"/>
+
+  <!-- ═══════════ Lane 2: Query ═══════════ -->
+  <rect class="lane" x="20" y="324" width="1080" height="420" rx="12"/>
+  <text class="lt" x="40" y="352">Retrieval &amp; Generation</text>
+  <text class="lm" x="232" y="352">POST /chat/message/stream</text>
+
+  <!-- Row 1 -->
+  <rect class="box" x="40" y="380" width="190" height="132" rx="8"/>
+  <text class="n" x="54" y="402">01</text>
+  <text class="t" x="54" y="422">Query</text>
+  <text class="s" x="54" y="444">User message plus the</text>
+  <text class="s" x="54" y="463">last 2 stored messages</text>
+  <text class="s" x="54" y="482">as the retrieval query</text>
+
+  <rect class="box" x="265" y="380" width="190" height="132" rx="8"/>
+  <text class="n" x="279" y="402">02</text>
+  <text class="t" x="279" y="422">Query Embedding</text>
+  <text class="s" x="279" y="444">Same model as ingestion</text>
+  <text class="s" x="279" y="463">768-d query vector</text>
+
+  <rect class="box data" x="500" y="370" width="310" height="96" rx="8"/>
+  <text class="n" x="514" y="392">03a</text>
+  <text class="t" x="550" y="392">Vector Search · Milvus</text>
+  <text class="s" x="514" y="414">HNSW · COSINE · ef = 128 · liftup_fulltext</text>
+  <text class="s" x="514" y="433">Filter: user_id, optionally pdf_name IN (…)</text>
+  <text class="s" x="514" y="452">Score ≥ 0.35 when searching the whole library</text>
+
+  <rect class="box data" x="500" y="478" width="310" height="66" rx="8"/>
+  <text class="n" x="514" y="500">03b</text>
+  <text class="t" x="550" y="500">Keyword Search · PostgreSQL</text>
+  <text class="s" x="514" y="522">ts_rank over 'simple' + 'turkish' tsvectors</text>
+
+  <rect class="box" x="850" y="380" width="230" height="132" rx="8"/>
+  <text class="n" x="864" y="402">04</text>
+  <text class="t" x="864" y="422">Rank Fusion</text>
+  <text class="s" x="864" y="444">Reciprocal Rank Fusion</text>
+  <text class="s" x="864" y="463">score = Σ 1 / (60 + rank)</text>
+  <text class="s" x="864" y="482">De-duplicated by</text>
+  <text class="s" x="864" y="501">(pdf_name, chunk_idx)</text>
+
+  <text class="lbl" x="285" y="534">top-k: 8 for library,</text>
+  <text class="lbl" x="285" y="550">4 per selected PDF (max 24)</text>
+
+  <path class="ln" d="M230,446 L263,446" marker-end="url(#a)"/>
+  <path class="ln" d="M455,436 L498,418" marker-end="url(#a)"/>
+  <path class="ln" d="M455,456 L498,508" marker-end="url(#a)"/>
+  <path class="ln" d="M810,418 L848,436" marker-end="url(#a)"/>
+  <path class="ln" d="M810,508 L848,456" marker-end="url(#a)"/>
+
+  <!-- elbow to row 2 -->
+  <path class="ln" d="M965,512 L965,566 L135,566 L135,588" marker-end="url(#a)"/>
+  <text class="lbl" x="490" y="558">fused candidates</text>
+
+  <!-- Row 2 -->
+  <rect class="box ext" x="40" y="590" width="230" height="134" rx="8"/>
+  <text class="n" x="54" y="612">05</text>
+  <text class="t" x="54" y="632">LLM Reranking</text>
+  <text class="s" x="54" y="654">OpenRouter, temperature 0</text>
+  <text class="s" x="54" y="673">First 400 chars / candidate</text>
+  <text class="s" x="54" y="692">Returns a JSON index order</text>
+  <text class="s" x="54" y="711">Falls back to fused order</text>
+
+  <rect class="box" x="310" y="590" width="230" height="134" rx="8"/>
+  <text class="n" x="324" y="612">06</text>
+  <text class="t" x="324" y="632">Context Builder</text>
+  <text class="s" x="324" y="654">[pdf (section, pages)] text</text>
+  <text class="s" x="324" y="673">Last 10 stored messages</text>
+  <text class="s" x="324" y="692">Grounding system prompt</text>
+  <text class="s" x="324" y="711">Source list per document</text>
+
+  <rect class="box ext" x="580" y="590" width="230" height="134" rx="8"/>
+  <text class="n" x="594" y="612">07</text>
+  <text class="t" x="594" y="632">Generation</text>
+  <text class="s" x="594" y="654">OpenRouter Chat Completions</text>
+  <text class="s" x="594" y="673">llama-3.1-8b-instruct</text>
+  <text class="s" x="594" y="692">temperature 0.4 · 1600 tokens</text>
+  <text class="s" x="594" y="711">Streamed token by token</text>
+
+  <rect class="box data" x="850" y="590" width="230" height="134" rx="8"/>
+  <text class="n" x="864" y="612">08</text>
+  <text class="t" x="864" y="632">Respond &amp; Persist</text>
+  <text class="s" x="864" y="654">SSE: chunk → done | error</text>
+  <text class="s" x="864" y="673">Question, answer and</text>
+  <text class="s" x="864" y="692">sources saved to Postgres</text>
+  <text class="s" x="864" y="711">only on success</text>
+
+  <path class="ln" d="M270,657 L308,657" marker-end="url(#a)"/>
+  <path class="ln" d="M540,657 L578,657" marker-end="url(#a)"/>
+  <path class="ln" d="M810,657 L848,657" marker-end="url(#a)"/>
+
+  <!-- Footnote -->
+  <text class="noteb" x="20" y="782">Project Suggestion</text>
+  <text class="note" x="160" y="782">title / abstract modes run a filtered COSINE search on liftup_titles / liftup_abstracts;</text>
+  <text class="note" x="160" y="802">fulltext mode reuses steps 03–05 with top_k × 4 candidates, max-pools one chunk per paper,</text>
+  <text class="note" x="160" y="822">adds up to 4 stored chunks for the top 3 papers and asks the LLM for a structured JSON analysis.</text>
+</svg>
