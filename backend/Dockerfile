@@ -1,4 +1,6 @@
-FROM python:3.11-slim
+# Match the local dev venv (3.10): requirements.txt was frozen there and
+# pins 3.10-only backports such as backports.asyncio.runner.
+FROM python:3.10-slim
 
 WORKDIR /app
 
@@ -7,7 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# CPU-only torch wheel: the VM has no GPU, and the default PyPI wheel
+# drags in several GB of CUDA libraries.
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
 COPY . .
 
